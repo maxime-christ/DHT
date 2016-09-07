@@ -37,10 +37,26 @@ func makeDHTNode(nodeId *string, ip string, port string) *DHTNode {
 }
 
 func (dhtNode *DHTNode) addToRing(newDHTNode *DHTNode) {
-	// TODO
+	if dhtNode.isAlone() {
+		// There's only one node in the ring
+		dhtNode.predecessor = newDHTNode
+		dhtNode.successor = newDHTNode
+		newDHTNode.predecessor = dhtNode
+		newDHTNode.successor = dhtNode
+	} else {
+		// Several nodes already in the ring
+		targetNextNode := dhtNode.acceleratedLookupUsingFingers(newDHTNode.nodeId)
+		targetPreviousNode := targetNextNode.predecessor
+
+		newDHTNode.successor = targetNextNode
+		newDHTNode.predecessor = targetPreviousNode
+		targetPreviousNode.successor = newDHTNode
+		targetNextNode.predecessor = newDHTNode
+	}
 }
 
 func (dhtNode *DHTNode) lookup(key string) (responsibleNode *DHTNode) {
+	fmt.Println("lookup call, biatch", dhtNode.nodeId)
 	if dhtNode.responsible(key) {
 		responsibleNode = dhtNode
 	} else {
@@ -61,10 +77,15 @@ func (dhtNode *DHTNode) lookup(key string) (responsibleNode *DHTNode) {
 
 func (dhtNode *DHTNode) acceleratedLookupUsingFingers(key string) *DHTNode {
 	// TODO
-	return dhtNode // XXX This is not correct obviously
+	return dhtNode.lookup(key) // XXX This is not correct obviously
 }
 
 func (dhtNode *DHTNode) responsible(key string) bool {
+	if dhtNode.isAlone() {
+		// if it is alone, dhtNode.predecessor next will fail
+		return true
+	}
+
 	keyBytes, error := hex.DecodeString(key)
 	if error != nil {
 		fmt.Println("The key you are looking for is not readable!", key)
@@ -73,7 +94,7 @@ func (dhtNode *DHTNode) responsible(key string) bool {
 	predecessorIdBytes, error := hex.DecodeString(dhtNode.predecessor.nodeId)
 	nodeIdBytes, _ := hex.DecodeString(dhtNode.nodeId)
 
-	if bytes.Compare(keyBytes, predecessorIdBytes) == 1 && bytes.Compare(keyBytes, nodeIdBytes) <= 0 {
+	if between(predecessorIdBytes, nodeIdBytes, keyBytes) {
 		return true
 	}
 
@@ -81,16 +102,27 @@ func (dhtNode *DHTNode) responsible(key string) bool {
 }
 
 func (dhtNode *DHTNode) printRing() {
-	// TODO
+	firstNode := dhtNode.acceleratedLookupUsingFingers("09")
+	currentNode := firstNode
+
+	for currentNode.successor != firstNode {
+		fmt.Println(currentNode.nodeId)
+		currentNode = currentNode.successor
+	}
+	fmt.Println(currentNode.nodeId)
 }
 
 func (dhtNode *DHTNode) testCalcFingers(m int, bits int) {
-	/* idBytes, _ := hex.DecodeString(dhtNode.nodeId)
+	idBytes, _ := hex.DecodeString(dhtNode.nodeId)
 	fingerHex, _ := calcFinger(idBytes, m, bits)
 	fingerSuccessor := dhtNode.lookup(fingerHex)
 	fingerSuccessorBytes, _ := hex.DecodeString(fingerSuccessor.nodeId)
 	fmt.Println("successor    " + fingerSuccessor.nodeId)
 
 	dist := distance(idBytes, fingerSuccessorBytes, bits)
-	fmt.Println("distance     " + dist.String()) */
+	fmt.Println("distance     " + dist.String())
+}
+
+func (dhtNode *DHTNode) isAlone() bool {
+	return dhtNode.successor == nil && dhtNode.predecessor == nil
 }
