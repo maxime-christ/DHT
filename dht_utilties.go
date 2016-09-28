@@ -3,6 +3,7 @@ package dht
 import (
 	"bytes"
 	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"github.com/nu7hatch/gouuid"
 	"math/big"
@@ -23,21 +24,29 @@ func distance(a, b []byte, bits int) *big.Int {
 	return &dist
 }
 
-func between(id1, id2, key []byte) bool {
+func between(id1, id2, key string, infIncluded, supIncluded bool) bool {
 	// 0 if a==b, -1 if a < b, and +1 if a > b
 
-	if bytes.Compare(key, id2) == 0 { // key == id1
+	id1Bytes, _ := hex.DecodeString(id1)
+	id2Bytes, _ := hex.DecodeString(id2)
+	keyBytes, _ := hex.DecodeString(key)
+
+	if bytes.Compare(keyBytes, id1Bytes) == 0 && infIncluded { // keyBytes == id1Bytes
 		return true
 	}
 
-	if bytes.Compare(id2, id1) == 1 { // id2 > id1
-		if bytes.Compare(key, id2) == -1 && bytes.Compare(key, id1) == 1 { // key < id2 && key > id1
+	if bytes.Compare(keyBytes, id2Bytes) == 0 && supIncluded { // keyBytes == id2Bytes
+		return true
+	}
+
+	if bytes.Compare(id2Bytes, id1Bytes) == 1 { // id2Bytes > id1Bytes
+		if bytes.Compare(keyBytes, id2Bytes) == -1 && bytes.Compare(keyBytes, id1Bytes) == 1 { // keyBytes < id2Bytes && keyBytes > id1Bytes
 			return true
 		} else {
 			return false
 		}
-	} else { // id1 > id2
-		if bytes.Compare(key, id1) == 1 || bytes.Compare(key, id2) == -1 { // key > id1 || key < id2
+	} else { // id1Bytes > id2Bytes
+		if bytes.Compare(keyBytes, id1Bytes) == 1 || bytes.Compare(keyBytes, id2Bytes) == -1 { // keyBytes > id1Bytes || keyBytes < id2Bytes
 			return true
 		} else {
 			return false
@@ -47,17 +56,17 @@ func between(id1, id2, key []byte) bool {
 
 // (n + 2^(k-1)) mod (2^m)
 func calcFinger(n []byte, k int, m int) (string, []byte) {
-	fmt.Println("calulcating result = (n+2^(k-1)) mod (2^m)")
+	// fmt.Println("calulcating result = (n+2^(k-1)) mod (2^m)")
 
 	// convert the n to a bigint
 	nBigInt := big.Int{}
 	nBigInt.SetBytes(n)
 
-	fmt.Printf("n            %s\n", nBigInt.String())
+	// fmt.Printf("n            %s\n", nBigInt.String())
 
-	fmt.Printf("k            %d\n", k)
+	// fmt.Printf("k            %d\n", k)
 
-	fmt.Printf("m            %d\n", m)
+	// fmt.Printf("m            %d\n", m)
 
 	// get the right addend, i.e. 2^(k-1)
 	two := big.NewInt(2)
@@ -88,6 +97,11 @@ func calcFinger(n []byte, k int, m int) (string, []byte) {
 	resultHex := fmt.Sprintf("%x", resultBytes)
 
 	//fmt.Printf("result (hex) %s\n", resultHex)
+
+	// when resultBytes is 0, resultHex is empty string
+	if resultHex == "" {
+		resultHex = "00"
+	}
 
 	return resultHex, resultBytes
 }

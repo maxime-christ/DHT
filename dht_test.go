@@ -3,14 +3,22 @@ package dht
 import (
 	"fmt"
 	// "github.com/nu7hatch/gouuid"
+	// "encoding/hex"
 	"testing"
 )
 
 // func TestMisc(t *testing.T) {
-// 	nodeId := "00"
-// 	node := makeDHTNode(&nodeId, "localhost", "1111")
-// 	fmt.Println(uuid.NewV4())
-// 	t.Log("Node id is", node.nodeId)
+// 	nodeId0 := "00"
+// 	nodeId1 := "03"
+// 	nodeId2 := "06"
+// 	node1 := makeDHTNode(&nodeId0, "localhost", "1111", 3)
+// 	node2 := makeDHTNode(&nodeId1, "localhost", "1111", 3)
+// 	node3 := makeDHTNode(&nodeId2, "localhost", "1111", 3)
+
+// 	node1.addToRing(node2)
+// 	node1.addToRing(node3)
+
+// 	node1.printRing()
 // }
 
 func TestDHT1(t *testing.T) {
@@ -23,14 +31,14 @@ func TestDHT1(t *testing.T) {
 	id6 := "06"
 	id7 := "07"
 
-	node0b := makeDHTNode(&id0, "localhost", "1111")
-	node1b := makeDHTNode(&id1, "localhost", "1112")
-	node2b := makeDHTNode(&id2, "localhost", "1113")
-	node3b := makeDHTNode(&id3, "localhost", "1114")
-	node4b := makeDHTNode(&id4, "localhost", "1115")
-	node5b := makeDHTNode(&id5, "localhost", "1116")
-	node6b := makeDHTNode(&id6, "localhost", "1117")
-	node7b := makeDHTNode(&id7, "localhost", "1118")
+	node0b := makeDHTNode(&id0, "localhost", "1111", 3)
+	node1b := makeDHTNode(&id1, "localhost", "1112", 3)
+	node2b := makeDHTNode(&id2, "localhost", "1113", 3)
+	node3b := makeDHTNode(&id3, "localhost", "1114", 3)
+	node4b := makeDHTNode(&id4, "localhost", "1115", 3)
+	node5b := makeDHTNode(&id5, "localhost", "1116", 3)
+	node6b := makeDHTNode(&id6, "localhost", "1117", 3)
+	node7b := makeDHTNode(&id7, "localhost", "1118", 3)
 
 	/*var fakeid *string
 	node0b := makeDHTNode(fakeid, "localhost", "1111")
@@ -43,6 +51,10 @@ func TestDHT1(t *testing.T) {
 	node7b := makeDHTNode(fakeid, "localhost", "1118")*/
 
 	node0b.addToRing(node1b)
+
+	node0b.printFingerTable()
+	node1b.printFingerTable()
+
 	node1b.addToRing(node2b)
 	node1b.addToRing(node3b)
 	node1b.addToRing(node4b)
@@ -53,49 +65,57 @@ func TestDHT1(t *testing.T) {
 	fmt.Println("-> ring structure")
 	node1b.printRing()
 
-	node3b.testCalcFingers(0, 3)
-	node3b.testCalcFingers(1, 3)
-	node3b.testCalcFingers(2, 3)
-	node3b.testCalcFingers(3, 3)
+	// node1b.printFingerTable()
+	// node2b.printFingerTable()
+	// node3b.printFingerTable()
+	// node4b.printFingerTable()
+	// node5b.printFingerTable()
+	// node6b.printFingerTable()
+	// node7b.printFingerTable()
+
+	// node3b.testCalcFingers(0, 3)
+	// node3b.testCalcFingers(1, 3)
+	// node3b.testCalcFingers(2, 3)
+	// node3b.testCalcFingers(3, 3)
 }
 
-func TestDHT2(t *testing.T) {
-	node1 := makeDHTNode(nil, "localhost", "1111")
-	node2 := makeDHTNode(nil, "localhost", "1112")
-	node3 := makeDHTNode(nil, "localhost", "1113")
-	node4 := makeDHTNode(nil, "localhost", "1114")
-	node5 := makeDHTNode(nil, "localhost", "1115")
-	node6 := makeDHTNode(nil, "localhost", "1116")
-	node7 := makeDHTNode(nil, "localhost", "1117")
-	node8 := makeDHTNode(nil, "localhost", "1118")
-	node9 := makeDHTNode(nil, "localhost", "1119")
+// func TestDHT2(t *testing.T) {
+// 	node1 := makeDHTNode(nil, "localhost", "1111", 160)
+// 	node2 := makeDHTNode(nil, "localhost", "1112", 160)
+// 	node3 := makeDHTNode(nil, "localhost", "1113", 160)
+// 	node4 := makeDHTNode(nil, "localhost", "1114", 160)
+// 	node5 := makeDHTNode(nil, "localhost", "1115", 160)
+// 	node6 := makeDHTNode(nil, "localhost", "1116", 160)
+// 	node7 := makeDHTNode(nil, "localhost", "1117", 160)
+// 	node8 := makeDHTNode(nil, "localhost", "1118", 160)
+// 	node9 := makeDHTNode(nil, "localhost", "1119", 160)
 
-	key1 := "2b230fe12d1c9c60a8e489d028417ac89de57635"
-	key2 := "87adb987ebbd55db2c5309fd4b23203450ab0083"
-	key3 := "74475501523a71c34f945ae4e87d571c2c57f6f3"
+// 	key1 := "2b230fe12d1c9c60a8e489d028417ac89de57635"
+// 	key2 := "87adb987ebbd55db2c5309fd4b23203450ab0083"
+// 	key3 := "74475501523a71c34f945ae4e87d571c2c57f6f3"
 
-	fmt.Println("TEST: " + node1.lookup(key1).nodeId + " is responsible for " + key1)
-	fmt.Println("TEST: " + node1.lookup(key2).nodeId + " is responsible for " + key2)
-	fmt.Println("TEST: " + node1.lookup(key3).nodeId + " is responsible for " + key3)
+// 	fmt.Println("TEST: " + node1.lookup(key1).nodeId + " is responsible for " + key1)
+// 	fmt.Println("TEST: " + node1.lookup(key2).nodeId + " is responsible for " + key2)
+// 	fmt.Println("TEST: " + node1.lookup(key3).nodeId + " is responsible for " + key3)
 
-	node1.addToRing(node2)
-	node1.addToRing(node3)
-	node1.addToRing(node4)
-	node4.addToRing(node5)
-	node3.addToRing(node6)
-	node3.addToRing(node7)
-	node3.addToRing(node8)
-	node7.addToRing(node9)
+// 	node1.addToRing(node2)
+// 	node1.addToRing(node3)
+// 	node1.addToRing(node4)
+// 	node4.addToRing(node5)
+// 	node3.addToRing(node6)
+// 	node3.addToRing(node7)
+// 	node3.addToRing(node8)
+// 	node7.addToRing(node9)
 
-	fmt.Println("-> ring structure")
-	node1.printRing()
+// 	fmt.Println("-> ring structure")
+// 	node1.printRing()
 
-	nodeForKey1 := node1.lookup(key1)
-	fmt.Println("dht node " + nodeForKey1.nodeId + " running at " + nodeForKey1.contact.ip + ":" + nodeForKey1.contact.port + " is responsible for " + key1)
+// 	nodeForKey1 := node1.lookup(key1)
+// 	fmt.Println("dht node " + nodeForKey1.nodeId + " running at " + nodeForKey1.contact.ip + ":" + nodeForKey1.contact.port + " is responsible for " + key1)
 
-	nodeForKey2 := node1.lookup(key2)
-	fmt.Println("dht node " + nodeForKey2.nodeId + " running at " + nodeForKey2.contact.ip + ":" + nodeForKey2.contact.port + " is responsible for " + key2)
+// 	nodeForKey2 := node1.lookup(key2)
+// 	fmt.Println("dht node " + nodeForKey2.nodeId + " running at " + nodeForKey2.contact.ip + ":" + nodeForKey2.contact.port + " is responsible for " + key2)
 
-	nodeForKey3 := node1.lookup(key3)
-	fmt.Println("dht node " + nodeForKey3.nodeId + " running at " + nodeForKey3.contact.ip + ":" + nodeForKey3.contact.port + " is responsible for " + key3)
-}
+// 	nodeForKey3 := node1.lookup(key3)
+// 	fmt.Println("dht node " + nodeForKey3.nodeId + " running at " + nodeForKey3.contact.ip + ":" + nodeForKey3.contact.port + " is responsible for " + key3)
+// }
