@@ -9,19 +9,30 @@ import (
 	"math/big"
 )
 
-func distance(a, b []byte, bits int) *big.Int {
+func distance(a, b string, bits int) *big.Int {
+	a_bytes, _ := hex.DecodeString(a)
+	b_bytes, _ := hex.DecodeString(b)
+
 	var ring big.Int
 	ring.Exp(big.NewInt(2), big.NewInt(int64(bits)), nil)
 
 	var a_int, b_int big.Int
-	(&a_int).SetBytes(a)
-	(&b_int).SetBytes(b)
+	(&a_int).SetBytes(a_bytes)
+	(&b_int).SetBytes(b_bytes)
 
-	var dist big.Int
-	(&dist).Sub(&b_int, &a_int)
+	var distCkWise big.Int
+	(&distCkWise).Sub(&b_int, &a_int)
 
-	(&dist).Mod(&dist, &ring)
-	return &dist
+	(&distCkWise).Mod(&distCkWise, &ring)
+
+	var distCntCkWise big.Int
+	(&distCntCkWise).Sub(&ring, &distCkWise)
+
+	if (&distCkWise).Cmp(&distCntCkWise) == 1 {
+		return &distCntCkWise
+	} else {
+		return &distCkWise
+	}
 }
 
 func between(id1, id2, key string, infIncluded, supIncluded bool) bool {
