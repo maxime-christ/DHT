@@ -25,16 +25,17 @@ type DHTFinger struct {
 type Message struct {
 	Type    string
 	Payload string
-	Src     string
-	Dest    string
+	Src     Contact
+	Dest    Contact
 }
 
 var predecessor *Contact
 var contact *Contact
 var finger []*DHTFinger
 var networkSize int
+var answerChannel chan Contact
 
-func MakeDHTNode(nodeId *string, ip string, port string, nwSize int) {
+func MakeDHTNode(nodeId *string, ip string, port string, nwSize int) Contact {
 	contact := new(Contact)
 	contact.ip = ip
 	contact.port = port
@@ -66,13 +67,19 @@ func MakeDHTNode(nodeId *string, ip string, port string, nwSize int) {
 		newFinger.end, _ = calcFinger(nodeIdBytes, i+1, networkSize)
 		finger[i] = newFinger
 	}
+	answerChannel = make(chan Contact)
+	go listen(contact)
 
-	go listen()
+	return *contact
 }
 
-func addToRing(peer *Contact) {
-	initFingerTable(peer)
+func addToRing(ring *Contact) {
+	fmt.Println("Player 2 join the game")
+	initFingerTable(ring)
+	fmt.Println("finger table init")
 	updateOthers()
+	fmt.Println("Ok c'est fait!")
+	printFingerTable()
 }
 
 func isResponsible(key string) bool {
@@ -122,8 +129,8 @@ func updateOthers() {
 
 		message := new(Message)
 		message.Type = "updateFinger"
-		message.Src = contact.String()
-		message.Dest = nodeToUpdate.String()
+		message.Src = *contact
+		message.Dest = *nodeToUpdate
 		message.Payload = strconv.Itoa(i)
 		send(message)
 		// nodeToUpdate.updateFingerTable(newNode, i) // TODO: send a message to nodeToUpdate
@@ -139,9 +146,9 @@ func updateFingerTable(newNode *Contact, index int) {
 		finger[index].responsibleNode = newNode
 		message := new(Message)
 		message.Type = "updateFinger"
-		message.Src = newNode.String()
-		message.Dest = predecessor.String()
-		message.Payload = ""
+		message.Src = *newNode
+		message.Dest = *predecessor
+		message.Payload = strconv.Itoa(index)
 		send(message)
 		// predecessor.updateFingerTable(newNode, index) //TODO: send a message
 	}
@@ -214,37 +221,61 @@ func (contact *Contact) String() string {
 	return contact.ip + ":" + contact.port
 }
 
-func listen() {
+func listen(contact *Contact) {
 	udpAddress, err := net.ResolveUDPAddr("udp4", contact.String())
 	if err != nil {
 		fmt.Println("Error while resolving", udpAddress)
 	}
+
 	connection, err := net.ListenUDP("udp4", udpAddress)
-	defer connection.Close()
 	if err != nil {
 		fmt.Println("Error while listening to", udpAddress)
+		fmt.Println(err)
 	}
+	defer connection.Close()
 
 	decoder := json.NewDecoder(connection)
 
+	fmt.Println("allo oui j'écoute?")
 	for {
 		message := new(Message)
 		err = decoder.Decode(message)
-		fmt.Println("Unvalid message format")
+		if err != nil {
+			fmt.Println("Unvalid message format")
+		}
 
 		switch message.Type {
 		case "requestFinger":
 			fmt.Println("asking for a finger")
+			index, _ := strconv.Atoi(message.Payload)
+			answer := new(Message)
+			answer.Type = "answerFinger"
+			answer.Src = *(finger[index].responsibleNode)
+			answer.Dest = message.Src
+			answer.Payload = ""
+
 		case "updateFinger":
-			fmt.Println("requesting to update of a finger")
+			fmt.Println("requesting to update a finger")
+			index, _ := strconv.Atoi(message.Payload)
+			updateFingerTable(&(message.Src), index)
+
 		case "setFinger":
-			fmt.Println("requesting to set of a finger")
+			fmt.Println("requesting to set a finger")
+			index, _ := strconv.Atoi(message.Payload)
+			finger[index].responsibleNode = &(message.Src) //TODO Pb here maybe
+
+		case "joinRing":
+			fmt.Println("I will join the ring")
+			addToRing(&(message.Src))
+
+		case "answerFinger":
+			answerChannel <- message.Src
 		}
 	}
 }
 
 func send(message *Message) {
-	udpAddress, err := net.ResolveUDPAddr("udp4", message.Dest)
+	udpAddress, err := net.ResolveUDPAddr("udp4", message.Dest.String())
 	if err != nil {
 		fmt.Println("Error while resolving", udpAddress)
 		return
@@ -266,23 +297,24 @@ func send(message *Message) {
 	}
 }
 
-func RequestFinger(peer *Contact, fingerIndex int) *Contact {
+func requestFinger(peer *Contact, fingerIndex int) *Contact {
 	message := new(Message)
 	message.Type = "requestFinger"
-	message.Src = contact.String()
-	message.Dest = peer.String()
+	message.Src = *contact
+	message.Dest = *peer
 	message.Payload = strconv.Itoa(fingerIndex)
 	send(message)
-	// parse answer
-	// Create Contact
-	return peer
+
+	//TODO timeout that shit
+	answer := <-answerChannel
+	return &answer
 }
 
 func setRemoteFinger(peer *Contact, fingerIndex int, newContact *Contact) {
 	message := new(Message)
 	message.Type = "setFinger"
-	message.Src = newContact.String()
-	message.Dest = peer.String()
+	message.Src = *newContact
+	message.Dest = *peer
 	message.Payload = strconv.Itoa(fingerIndex)
 	send(message)
 }
