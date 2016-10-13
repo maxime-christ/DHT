@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"net"
 	// "os"
-	// "strconv"
+	"strconv"
 )
 
 type Contact struct {
@@ -66,6 +66,8 @@ func MakeDHTNode(nodeId *string, ip string, port string, nwSize int) {
 		newFinger.end, _ = calcFinger(nodeIdBytes, i+1, networkSize)
 		finger[i] = newFinger
 	}
+
+	go listen()
 }
 
 func addToRing(peer *Contact) {
@@ -86,11 +88,11 @@ func isAlone() bool {
 }
 
 // -------------------------------------------------------------------------------Finger table util
-func initFingerTable(ring *Contact) { // TODO: replace findSuccesor call by sending a message
+func initFingerTable(ring *Contact) {
 	finger[1].responsibleNode = findSuccessor(finger[1].start)
 
 	predecessor = requestFinger(finger[1].responsibleNode, -1)
-	setFinger(finger[1].responsibleNode, -1, contact)
+	setRemoteFinger(finger[1].responsibleNode, -1, contact)
 	for i := 1; i < networkSize; i++ {
 		if between(contact.nodeId, finger[i].responsibleNode.nodeId, finger[i+1].start, false, true) {
 			finger[i+1].responsibleNode = finger[i].responsibleNode
@@ -119,7 +121,10 @@ func updateOthers() {
 		nodeToUpdate = findPredecessor(targetNode)
 
 		message := new(Message)
+		message.Type = "updateFinger"
+		message.Src = contact.String()
 		message.Dest = nodeToUpdate.String()
+		message.Payload = strconv.Itoa(i)
 		send(message)
 		// nodeToUpdate.updateFingerTable(newNode, i) // TODO: send a message to nodeToUpdate
 	}
@@ -133,6 +138,10 @@ func updateFingerTable(newNode *Contact, index int) {
 	if between(contact.nodeId, finger[index].responsibleNode.nodeId, newNode.nodeId, false, true) {
 		finger[index].responsibleNode = newNode
 		message := new(Message)
+		message.Type = "updateFinger"
+		message.Src = newNode.String()
+		message.Dest = predecessor.String()
+		message.Payload = ""
 		send(message)
 		// predecessor.updateFingerTable(newNode, index) //TODO: send a message
 	}
@@ -147,11 +156,11 @@ func findSuccessor(id string) *Contact {
 		return idPredecessor
 	}
 
-	return requestFinger(idPredecessor, 1) // TODO: send message
+	return requestFinger(idPredecessor, 1)
 }
 
 func findPredecessor(id string) *Contact {
-	nodeIterator := contact // TA MERE
+	nodeIterator := contact
 	nodeIteratorSuccessor := finger[1].responsibleNode
 
 	for !between(nodeIterator.nodeId, nodeIteratorSuccessor.nodeId, id, true, false) {
@@ -224,10 +233,12 @@ func listen() {
 		fmt.Println("Unvalid message format")
 
 		switch message.Type {
-		case "Join":
-			fmt.Println("Someone wants to join!")
-		case "Lookup":
-			fmt.Println("Someone is looking for a value!")
+		case "requestFinger":
+			fmt.Println("asking for a finger")
+		case "updateFinger":
+			fmt.Println("requesting to update of a finger")
+		case "setFinger":
+			fmt.Println("requesting to set of a finger")
 		}
 	}
 }
@@ -255,13 +266,23 @@ func send(message *Message) {
 	}
 }
 
-func requestFinger(peer *Contact, fingerIndex int) *Contact {
-	// send message
+func RequestFinger(peer *Contact, fingerIndex int) *Contact {
+	message := new(Message)
+	message.Type = "requestFinger"
+	message.Src = contact.String()
+	message.Dest = peer.String()
+	message.Payload = strconv.Itoa(fingerIndex)
+	send(message)
 	// parse answer
 	// Create Contact
 	return peer
 }
 
-func setFinger(peer *Contact, fingerIndex int, newContact *Contact) {
-	// send message
+func setRemoteFinger(peer *Contact, fingerIndex int, newContact *Contact) {
+	message := new(Message)
+	message.Type = "setFinger"
+	message.Src = newContact.String()
+	message.Dest = peer.String()
+	message.Payload = strconv.Itoa(fingerIndex)
+	send(message)
 }
