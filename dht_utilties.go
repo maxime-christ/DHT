@@ -129,3 +129,9 @@ func generateNodeId() string {
 
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
+
+func generateHashCode(value string) string {
+	byteValue := []byte(value)
+	byteKey := sha1.Sum(byteValue)
+	return string(byteKey[:])
+}

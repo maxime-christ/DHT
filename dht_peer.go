@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"net"
 	"strings"
@@ -303,6 +304,11 @@ func listen(self *Contact) {
 			go requestIdHandler(&source)
 		case "answerId":
 			answerChannel <- StringToContact(message.Src)
+		case "storeData":
+			go storeDataHandler(message.Payload)
+		case "storeKeyValue":
+			keyValue := strings.Split(message.Payload, "-")
+			go storeKeyValue(keyValue[0], keyValue[1])
 		}
 	}
 }
@@ -364,4 +370,36 @@ func joinRingHandle(source *Contact) {
 	sourceWithId := <-answerChannel
 	source = &sourceWithId
 	addToRing(source)
+}
+
+func storeDataHandler(value string) {
+	key := generateHashCode(value)
+	responsibleNode := findSuccessor(key, contact)
+	message := createMessage("StoreKeyValue", contact.ContactToString(), responsibleNode.ContactToString(), (key + "-" + value))
+	send(message)
+}
+
+// ------------------------------------------------------------------------------------Data Storage
+func storeKeyValue(key, value string) {
+	byteValue := []byte(value)
+	var folder string
+	copy := !isResponsible(key)
+	if !copy {
+		folder = "MainStorage/"
+	} else {
+		folder = "Copy/"
+	}
+
+	filename := contact.NodeId + folder + key
+	err := ioutil.WriteFile(filename, byteValue, 0444)
+	if err != nil {
+		fmt.Println("Error while storing file")
+	}
+
+	if !copy {
+		message := createMessage("StoreKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), (key + "-" + value))
+		send(message)
+		//TODO wait for answer then return
+	}
+	return
 }
