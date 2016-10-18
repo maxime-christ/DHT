@@ -124,11 +124,7 @@ func updateOthers() {
 		findPredecessor(contact.ContactToString(), targetNode)
 		nodeToUpdate = <-answerChannel
 
-		message := new(Message)
-		message.Type = "updateFinger"
-		message.Src = (contact.ContactToString())
-		message.Dest = ((&nodeToUpdate).ContactToString())
-		message.Payload = strconv.Itoa(i)
+		message := createMessage("updateFinger", contact.ContactToString(), (&nodeToUpdate).ContactToString(), strconv.Itoa(i))
 		send(message)
 		// nodeToUpdate.updateFingerTable(newNode, i) // TODO: send a message to nodeToUpdate
 	}
@@ -141,11 +137,8 @@ func updateFingerTable(newNode *Contact, index int) {
 
 	if between(contact.NodeId, finger[index].responsibleNode.NodeId, newNode.NodeId, false, true) {
 		finger[index].responsibleNode = newNode
-		message := new(Message)
-		message.Type = "updateFinger"
-		message.Src = (newNode.ContactToString())
-		message.Dest = (predecessor.ContactToString())
-		message.Payload = strconv.Itoa(index)
+		message := createMessage("updateFinger", newNode.ContactToString(), predecessor.ContactToString(), strconv.Itoa(index))
+
 		send(message)
 		// predecessor.updateFingerTable(newNode, index) //TODO: send a message
 	}
@@ -153,11 +146,7 @@ func updateFingerTable(newNode *Contact, index int) {
 
 // ------------------------------------------------------------------------------------------Lookup
 func findSuccessor(id string, dest *Contact) *Contact {
-	message := new(Message)
-	message.Type = "findPredecessor"
-	message.Src = contact.ContactToString()
-	message.Dest = dest.ContactToString()
-	message.Payload = id
+	message := createMessage("findPredecessor", contact.ContactToString(), dest.ContactToString(), id)
 	send(message)
 
 	idPredecessor := <-answerChannel
@@ -171,11 +160,7 @@ func findSuccessor(id string, dest *Contact) *Contact {
 
 func findPredecessor(source, id string) {
 	if !between(contact.NodeId, finger[1].responsibleNode.NodeId, id, true, false) {
-		message := new(Message)
-		message.Type = "findPredecessor"
-		message.Src = source
-		message.Dest = closestPrecedingFinger(id).ContactToString()
-		message.Payload = id
+		message := createMessage("findPredecessor", source, closestPrecedingFinger(id).ContactToString(), id)
 		send(message)
 		return
 	}
@@ -192,11 +177,7 @@ func findPredecessor(source, id string) {
 		responsibleNode = contact.ContactToString()
 	}
 
-	message := new(Message)
-	message.Type = "answerPredecessor"
-	message.Src = responsibleNode
-	message.Dest = source
-	message.Payload = ""
+	message := createMessage("answerPredecessor", responsibleNode, source, "")
 	send(message)
 }
 
@@ -251,6 +232,16 @@ func StringToContact(stringContact string) Contact {
 	return *contact
 }
 
+func createMessage(msgType, source, dest, payload string) *Message {
+	message := new(Message)
+	message.Type = msgType
+	message.Src = source
+	message.Dest = dest
+	message.Payload = payload
+
+	return message
+}
+
 func listen(self *Contact) {
 	contact = self
 	udpAddress, err := net.ResolveUDPAddr("udp4", self.String())
@@ -273,29 +264,19 @@ func listen(self *Contact) {
 		if err != nil {
 			fmt.Println("Unvalid message format", self.Port)
 		}
+		fmt.Println("The message type is:", message.Type)
 		switch message.Type {
 		case "requestFinger":
-			fmt.Println("asking for a finger")
 			index, _ := strconv.Atoi(message.Payload)
-			answer := new(Message)
-			answer.Type = "answerFinger"
-			if index >= 0 {
-				answer.Src = finger[index].responsibleNode.ContactToString()
-			} else {
-				answer.Src = predecessor.ContactToString()
-			}
-			answer.Dest = message.Src
-			answer.Payload = ""
-			send(answer)
+			source := StringToContact(message.Src)
+			go requestFingerHandler(&source, index)
 
 		case "updateFinger":
-			fmt.Println("requesting to update a finger")
 			index, _ := strconv.Atoi(message.Payload)
 			source := StringToContact(message.Src)
 			go updateFingerTable(&source, index)
 
 		case "setFinger":
-			fmt.Println("requesting to set a finger")
 			index, _ := strconv.Atoi(message.Payload)
 			source := StringToContact(message.Src)
 			if index >= 0 {
@@ -305,9 +286,8 @@ func listen(self *Contact) {
 			}
 
 		case "joinRing":
-			fmt.Println(StringToContact(message.Dest), "will join the ring")
 			source := StringToContact(message.Src)
-			go addToRing(&source)
+			go joinRingHandle(&source)
 
 		case "answerFinger":
 			answerChannel <- StringToContact(message.Src)
@@ -316,6 +296,12 @@ func listen(self *Contact) {
 			go findPredecessor(message.Src, message.Payload)
 
 		case "answerPredecessor":
+			answerChannel <- StringToContact(message.Src)
+
+		case "requestId":
+			source := StringToContact(message.Src)
+			go requestIdHandler(&source)
+		case "answerId":
 			answerChannel <- StringToContact(message.Src)
 		}
 	}
@@ -346,11 +332,7 @@ func send(message *Message) {
 }
 
 func requestFinger(peer *Contact, fingerIndex int) *Contact {
-	message := new(Message)
-	message.Type = "requestFinger"
-	message.Src = contact.ContactToString()
-	message.Dest = peer.ContactToString()
-	message.Payload = strconv.Itoa(fingerIndex)
+	message := createMessage("requestFinger", contact.ContactToString(), peer.ContactToString(), strconv.Itoa(fingerIndex))
 	send(message)
 
 	//TODO timeout that shit
@@ -358,11 +340,28 @@ func requestFinger(peer *Contact, fingerIndex int) *Contact {
 	return &answer
 }
 
+func requestFingerHandler(source *Contact, index int) {
+	answer := createMessage("answerFinger", predecessor.ContactToString(), source.ContactToString(), "")
+	if index >= 0 {
+		answer.Src = finger[index].responsibleNode.ContactToString()
+	}
+	send(answer)
+}
+
+func requestIdHandler(source *Contact) {
+	answer := createMessage("answerId", contact.ContactToString(), source.ContactToString(), "")
+	send(answer)
+}
+
 func setRemoteFinger(peer *Contact, fingerIndex int, newContact *Contact) {
-	message := new(Message)
-	message.Type = "setFinger"
-	message.Src = newContact.ContactToString()
-	message.Dest = peer.ContactToString()
-	message.Payload = strconv.Itoa(fingerIndex)
+	message := createMessage("setFinger", newContact.ContactToString(), peer.ContactToString(), strconv.Itoa(fingerIndex))
 	send(message)
+}
+
+func joinRingHandle(source *Contact) {
+	idRequest := createMessage("requestId", contact.ContactToString(), source.ContactToString(), "")
+	send(idRequest)
+	sourceWithId := <-answerChannel
+	source = &sourceWithId
+	addToRing(source)
 }
