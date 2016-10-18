@@ -75,10 +75,7 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 
 func addToRing(ring *Contact) {
 	initFingerTable(ring)
-	fmt.Println("finger table init")
 	updateOthers()
-	fmt.Println("Ok c'est fait!")
-	printFingerTable()
 }
 
 func isResponsible(key string) bool {
@@ -110,7 +107,7 @@ func initFingerTable(ring *Contact) {
 }
 
 func updateOthers() {
-	var nodeToUpdate *Contact
+	var nodeToUpdate Contact
 	var newNodeIdInt, power, toSubstract, result, modulo, addressSpace big.Int
 	(&newNodeIdInt).SetString(contact.NodeId, 16)
 	for i := 1; i < networkSize+1; i++ {
@@ -124,12 +121,13 @@ func updateOthers() {
 			targetNode = "00"
 		}
 		//targetNode = (newNode - 2 ^ (i-1)) mod 2 ^ m
-		nodeToUpdate = findPredecessor(targetNode, contact)
+		findPredecessor(contact.ContactToString(), targetNode)
+		nodeToUpdate = <-answerChannel
 
 		message := new(Message)
 		message.Type = "updateFinger"
 		message.Src = (contact.ContactToString())
-		message.Dest = (nodeToUpdate.ContactToString())
+		message.Dest = ((&nodeToUpdate).ContactToString())
 		message.Payload = strconv.Itoa(i)
 		send(message)
 		// nodeToUpdate.updateFingerTable(newNode, i) // TODO: send a message to nodeToUpdate
@@ -151,47 +149,64 @@ func updateFingerTable(newNode *Contact, index int) {
 		send(message)
 		// predecessor.updateFingerTable(newNode, index) //TODO: send a message
 	}
-	printFingerTable()
 }
 
 // ------------------------------------------------------------------------------------------Lookup
 func findSuccessor(id string, dest *Contact) *Contact {
-	idPredecessor := findPredecessor(id, dest)
+	message := new(Message)
+	message.Type = "findPredecessor"
+	message.Src = contact.ContactToString()
+	message.Dest = dest.ContactToString()
+	message.Payload = id
+	send(message)
+
+	idPredecessor := <-answerChannel
 
 	// TODO QuickFix:
 	if idPredecessor.NodeId == id {
-		return idPredecessor
+		return &idPredecessor
 	}
-	result := requestFinger(idPredecessor, 1)
-	return result
+	return requestFinger(&idPredecessor, 1)
 }
 
-func findPredecessor(id string, dest *Contact) *Contact {
-	nodeIterator := dest
-	nodeIteratorSuccessor := requestFinger(nodeIterator, 1)
-	for !between(nodeIterator.NodeId, nodeIteratorSuccessor.NodeId, id, true, false) {
-		nodeIterator = closestPrecedingFinger(nodeIterator, id)
-		nodeIteratorSuccessor = requestFinger(nodeIterator, 1)
+func findPredecessor(source, id string) {
+	if !between(contact.NodeId, finger[1].responsibleNode.NodeId, id, true, false) {
+		message := new(Message)
+		message.Type = "findPredecessor"
+		message.Src = source
+		message.Dest = closestPrecedingFinger(id).ContactToString()
+		message.Payload = id
+		send(message)
+		return
 	}
 
 	// TODO: Quick fix
 	if id == "" {
 		id = "00"
 	}
-	if nodeIteratorSuccessor.NodeId == id {
-		nodeIterator = nodeIteratorSuccessor
+
+	var responsibleNode string
+	if finger[1].responsibleNode.NodeId == id {
+		responsibleNode = finger[1].responsibleNode.ContactToString()
+	} else {
+		responsibleNode = contact.ContactToString()
 	}
-	return nodeIterator
+
+	message := new(Message)
+	message.Type = "answerPredecessor"
+	message.Src = responsibleNode
+	message.Dest = source
+	message.Payload = ""
+	send(message)
 }
 
-func closestPrecedingFinger(dhtNode *Contact, id string) *Contact {
+func closestPrecedingFinger(id string) *Contact {
 	for i := networkSize; i > 0; i-- {
-		ithFinger := requestFinger(dhtNode, i)
-		if between(dhtNode.NodeId, id, ithFinger.NodeId, false, true) {
-			return ithFinger
+		if between(contact.NodeId, id, finger[i].responsibleNode.NodeId, false, true) {
+			return finger[i].responsibleNode
 		}
 	}
-	return dhtNode // Should never happen
+	return contact // Should never happen
 }
 
 // ----------------------------------------------------------------------------------------Printing
@@ -255,7 +270,6 @@ func listen(self *Contact) {
 	for {
 		message := new(Message)
 		err = decoder.Decode(message)
-		fmt.Println(message.String())
 		if err != nil {
 			fmt.Println("Unvalid message format", self.Port)
 		}
@@ -271,7 +285,6 @@ func listen(self *Contact) {
 				answer.Src = predecessor.ContactToString()
 			}
 			answer.Dest = message.Src
-			fmt.Println("---The requested finger is", answer.Src)
 			answer.Payload = ""
 			send(answer)
 
@@ -292,11 +305,17 @@ func listen(self *Contact) {
 			}
 
 		case "joinRing":
-			fmt.Println("I will join the ring", StringToContact(message.Src))
+			fmt.Println(StringToContact(message.Dest), "will join the ring")
 			source := StringToContact(message.Src)
 			go addToRing(&source)
 
 		case "answerFinger":
+			answerChannel <- StringToContact(message.Src)
+
+		case "findPredecessor":
+			go findPredecessor(message.Src, message.Payload)
+
+		case "answerPredecessor":
 			answerChannel <- StringToContact(message.Src)
 		}
 	}
@@ -336,7 +355,6 @@ func requestFinger(peer *Contact, fingerIndex int) *Contact {
 
 	//TODO timeout that shit
 	answer := <-answerChannel
-	fmt.Println("hey i've got", answer.NodeId)
 	return &answer
 }
 
