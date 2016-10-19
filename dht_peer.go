@@ -292,7 +292,7 @@ func listen(self *Contact) {
 
 		case "joinRing":
 			source := StringToContact(message.Src)
-			go joinRingHandle(&source)
+			go joinRingHandler(&source)
 
 		case "answerFinger":
 			answerChannel <- StringToContact(message.Src)
@@ -387,7 +387,7 @@ func setRemoteFinger(peer *Contact, fingerIndex int, newContact *Contact) {
 	send(message)
 }
 
-func joinRingHandle(source *Contact) {
+func joinRingHandler(source *Contact) {
 	idRequest := createMessage("requestId", contact.ContactToString(), source.ContactToString(), "")
 	send(idRequest)
 	sourceWithId := <-answerChannel
