@@ -36,6 +36,7 @@ var contact *Contact
 var finger []*DHTFinger
 var networkSize int
 var answerChannel chan Contact
+var pongChannel chan bool
 
 func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	contact := new(Contact)
@@ -48,6 +49,8 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	} else {
 		contact.NodeId = *NodeId
 	}
+
+	fmt.Println("Hey, i'm", contact.NodeId, "and run on port", Port)
 
 	predecessor = contact
 
@@ -69,6 +72,7 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 		finger[i] = newFinger
 	}
 	answerChannel = make(chan Contact)
+	pongChannel = make(chan bool)
 	go listen(contact)
 
 	return *contact
@@ -309,11 +313,29 @@ func listen(self *Contact) {
 		case "storeKeyValue":
 			keyValue := strings.Split(message.Payload, "-")
 			go storeKeyValue(keyValue[0], keyValue[1])
+		case "ping":
+			go pingHandler(StringToContact(message.Src))
+		case "pong":
+			pongChannel <- true
 		}
 	}
 }
 
 func send(message *Message) {
+	if message.Type != "ping" && message.Type != "pong" {
+		timeoutChannel := make(chan bool)
+		pingMessage := createMessage("ping", contact.ContactToString(), message.Dest, "")
+		send(pingMessage)
+		go timeout(timeoutChannel, 3)
+		select {
+		case <-pongChannel:
+			continue
+		case <-timeoutChannel:
+			fmt.Println("host is dead")
+			//TODO: remove peer from circle
+		}
+	}
+
 	dest := StringToContact(message.Dest)
 	udpAddress, err := net.ResolveUDPAddr("udp4", (&dest).String())
 	if err != nil {
@@ -377,6 +399,11 @@ func storeDataHandler(value string) {
 	responsibleNode := findSuccessor(key, contact)
 	message := createMessage("StoreKeyValue", contact.ContactToString(), responsibleNode.ContactToString(), (key + "-" + value))
 	send(message)
+}
+
+func pingHandler(source *Contact) {
+	pongMessage := createMessage("pong", contact.ContactToString(), source.ContactToString(), "")
+	send(pongMessage)
 }
 
 // ------------------------------------------------------------------------------------Data Storage

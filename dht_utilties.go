@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/nu7hatch/gouuid"
 	"math/big"
+	"time"
 )
 
 func distance(a, b string, bits int) *big.Int {
@@ -134,4 +135,9 @@ func generateHashCode(value string) string {
 	byteValue := []byte(value)
 	byteKey := sha1.Sum(byteValue)
 	return string(byteKey[:])
+}
+
+func timeout(channel chan bool, timeoutSec int) {
+	time.Sleep(timeoutSec * time.Second)
+	channel <- true
 }
