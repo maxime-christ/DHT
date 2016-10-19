@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/nu7hatch/gouuid"
 	"math/big"
+	"os"
 	"time"
 )
 
@@ -138,6 +139,17 @@ func generateHashCode(value string) string {
 }
 
 func timeout(channel chan bool, timeoutSec int) {
-	time.Sleep(timeoutSec * time.Second)
+	time.Sleep(time.Duration(timeoutSec) * time.Second)
 	channel <- true
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return true
 }
