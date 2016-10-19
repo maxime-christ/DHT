@@ -7,9 +7,9 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net"
-	"strings"
-	// "os"
+	"os"
 	"strconv"
+	"strings"
 )
 
 type Contact struct {
@@ -382,21 +382,24 @@ func storeDataHandler(value string) {
 // ------------------------------------------------------------------------------------Data Storage
 func storeKeyValue(key, value string) {
 	byteValue := []byte(value)
-	var folder string
-	copy := !isResponsible(key)
-	if !copy {
-		folder = "MainStorage/"
+	folder, _ := os.Getwd()
+	responsible := isResponsible(key)
+	if responsible {
+		folder += "/" + contact.NodeId + "/MainStorage/"
 	} else {
-		folder = "Copy/"
+		folder += "/" + contact.NodeId + "/Copy/"
+	}
+	if !exists(folder) {
+		os.Mkdir(folder, 0744)
 	}
 
-	filename := contact.NodeId + folder + key
-	err := ioutil.WriteFile(filename, byteValue, 0444)
+	filename := folder + key
+	err := ioutil.WriteFile(filename, byteValue, 0644)
 	if err != nil {
 		fmt.Println("Error while storing file")
 	}
 
-	if !copy {
+	if responsible {
 		message := createMessage("StoreKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), (key + "-" + value))
 		send(message)
 		//TODO wait for answer then return

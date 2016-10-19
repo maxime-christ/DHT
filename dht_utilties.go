@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/nu7hatch/gouuid"
 	"math/big"
+	"os"
 )
 
 func distance(a, b string, bits int) *big.Int {
@@ -134,4 +135,15 @@ func generateHashCode(value string) string {
 	byteValue := []byte(value)
 	byteKey := sha1.Sum(byteValue)
 	return string(byteKey[:])
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return true
 }
