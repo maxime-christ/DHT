@@ -37,6 +37,7 @@ var finger []*DHTFinger
 var networkSize int
 var answerChannel chan Contact
 var pongChannel chan bool
+var fileChannel chan []byte
 
 func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	contact := new(Contact)
@@ -73,6 +74,7 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	}
 	answerChannel = make(chan Contact)
 	pongChannel = make(chan bool)
+	fileChannel = make(chan []byte)
 	go listen(contact)
 
 	return *contact
@@ -81,6 +83,7 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 func addToRing(ring *Contact) {
 	initFingerTable(ring)
 	updateOthers()
+	balanceStorage()
 }
 
 func isResponsible(key string) bool {
@@ -108,7 +111,7 @@ func initFingerTable(ring *Contact) {
 			finger[i+1].responsibleNode = findSuccessor(finger[i+1].start, ring)
 		}
 	}
-	printFingerTable()
+	// printFingerTable()
 }
 
 func updateOthers() {
@@ -269,12 +272,15 @@ func listen(self *Contact) {
 		if err != nil {
 			fmt.Println("Unvalid message format", self.Port)
 		}
-		fmt.Println("The message type is:", message.Type)
+		// fmt.Println("The message type is:", message.Type)
 		switch message.Type {
 		case "requestFinger":
 			index, _ := strconv.Atoi(message.Payload)
 			source := StringToContact(message.Src)
 			go requestFingerHandler(&source, index)
+
+		case "answerFinger":
+			answerChannel <- StringToContact(message.Src)
 
 		case "updateFinger":
 			index, _ := strconv.Atoi(message.Payload)
@@ -294,9 +300,6 @@ func listen(self *Contact) {
 			source := StringToContact(message.Src)
 			go joinRingHandler(&source)
 
-		case "answerFinger":
-			answerChannel <- StringToContact(message.Src)
-
 		case "findPredecessor":
 			go findPredecessor(message.Src, message.Payload)
 
@@ -306,18 +309,41 @@ func listen(self *Contact) {
 		case "requestId":
 			source := StringToContact(message.Src)
 			go requestIdHandler(&source)
+
 		case "answerId":
 			answerChannel <- StringToContact(message.Src)
+
 		case "storeData":
-			go storeDataHandler(message.Payload)
+			data := strings.SplitN(message.Payload, "/", 2)
+			go storeDataHandler(data[0], data[1])
+
 		case "storeKeyValue":
 			keyValue := strings.Split(message.Payload, "-")
-			go storeKeyValue(keyValue[0], keyValue[1])
+			source := StringToContact(message.Src)
+			go storeKeyValue(keyValue[0], keyValue[1], &source)
+
 		case "ping":
 			source := StringToContact(message.Src)
 			go pingHandler(&source)
+
 		case "pong":
 			pongChannel <- true
+
+		case "printRing":
+			go printRingHandler(message.Payload)
+
+		case "changeResponsibility":
+			go changeResponsibilityHandler()
+
+		case "requestFile":
+			source := StringToContact(message.Src)
+			go requestFileHandler(message.Payload, &source)
+
+		case "answerFile":
+			fileChannel <- []byte(message.Payload)
+
+		case "deleteFile":
+			go deleteFileHandler(message.Payload)
 		}
 	}
 }
@@ -332,7 +358,7 @@ func send(message *Message) {
 		case <-pongChannel:
 			break
 		case <-timeoutChannel:
-			fmt.Println("host is dead")
+			fmt.Println(message.Dest, "host is dead")
 			//TODO: remove peer from circle
 		}
 	}
@@ -395,11 +421,16 @@ func joinRingHandler(source *Contact) {
 	addToRing(source)
 }
 
-func storeDataHandler(value string) {
-	key := generateHashCode(value)
+func storeDataHandler(filename, value string) {
+	key := generateHashCode(filename)
 	responsibleNode := findSuccessor(key, contact)
-	message := createMessage("StoreKeyValue", contact.ContactToString(), responsibleNode.ContactToString(), (key + "-" + value))
+	message := createMessage("storeKeyValue", contact.ContactToString(), responsibleNode.ContactToString(), (key + "-" + value))
 	send(message)
+
+	// Store the data as you are the backup responsible node
+	if *predecessor == *responsibleNode {
+		go storeKeyValue(key, value, contact)
+	}
 }
 
 func pingHandler(source *Contact) {
@@ -407,30 +438,135 @@ func pingHandler(source *Contact) {
 	send(pongMessage)
 }
 
+func printRingHandler(list string) {
+	addresses := strings.Split(list, "\n")
+	if addresses[0] == contact.NodeId {
+		fmt.Println(list)
+	} else {
+		message := createMessage("printRing", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), list+contact.NodeId+"\n")
+		send(message)
+	}
+}
+
+func changeResponsibilityHandler() {
+	// Hand over the files the new node is responsible for
+	dirname := "storage/" + contact.NodeId + "/MainStorage/"
+	files, _ := ioutil.ReadDir(dirname)
+	predecessorId := predecessor.NodeId
+	for _, file := range files {
+		key := file.Name()
+		if !between(predecessorId, contact.NodeId, key, false, true) {
+			valueByte, _ := ioutil.ReadFile(dirname + key)
+			value := fmt.Sprintf("%x", valueByte)
+			go storeKeyValue(key, value, contact)
+			message := createMessage("storeKeyValue", contact.ContactToString(), predecessor.ContactToString(), key+"-"+value)
+			send(message)
+			os.Remove(dirname + key)
+		}
+	}
+
+	// Hand over the replication of the previous predecessor's file
+	dirname = "storage/" + contact.NodeId + "/Copy/"
+	files, _ = ioutil.ReadDir(dirname)
+	for _, file := range files {
+		key := file.Name()
+		valueByte, _ := ioutil.ReadFile(dirname + key)
+		value := fmt.Sprintf("%x", valueByte)
+		message := createMessage("storeKeyValue", contact.ContactToString(), predecessor.ContactToString(), key+"-"+value)
+		send(message)
+		os.Remove(dirname + key)
+	}
+}
+
+func requestFileHandler(key string, source *Contact) {
+	if isResponsible(key) {
+		dirname := "storage/" + contact.NodeId + "/MainStorage/"
+		var fileAsString string
+		if exists(dirname + key) {
+			file, _ := ioutil.ReadFile(dirname + key)
+			fileAsString = fmt.Sprintf("%x", file)
+		} else {
+			fileAsString = ""
+		}
+		answer := createMessage("answerFile", contact.ContactToString(), source.ContactToString(), fileAsString)
+		send(answer)
+	} else {
+		responsibleNode := findSuccessor(key, contact)
+		message := createMessage("requestFile", source.ContactToString(), responsibleNode.ContactToString(), "")
+		send(message)
+	}
+}
+
+func deleteFileHandler(key string) {
+	if isResponsible(key) {
+		dirname := "storage/" + contact.NodeId + "/MainStorage/"
+		if exists(dirname + key) {
+			os.Remove(dirname + key)
+		}
+	} else {
+		responsibleNode := findSuccessor(key, contact)
+		message := createMessage("deleteFile", contact.ContactToString(), responsibleNode.ContactToString(), key)
+		send(message)
+	}
+}
+
 // ------------------------------------------------------------------------------------Data Storage
-func storeKeyValue(key, value string) {
+func storeKeyValue(key, value string, source *Contact) {
 	byteValue := []byte(value)
 	folder, _ := os.Getwd()
 	responsible := isResponsible(key)
 	if responsible {
-		folder += "/" + contact.NodeId + "/MainStorage/"
+		folder += "/storage/" + contact.NodeId + "/MainStorage/"
 	} else {
-		folder += "/" + contact.NodeId + "/Copy/"
+		folder += "/storage/" + contact.NodeId + "/Copy/"
 	}
 	if !exists(folder) {
-		os.Mkdir(folder, 0744)
+		fmt.Println("That does not exist yet")
+		os.MkdirAll(folder, 0744)
 	}
 
 	filename := folder + key
+	fmt.Println(filename)
 	err := ioutil.WriteFile(filename, byteValue, 0644)
 	if err != nil {
 		fmt.Println("Error while storing file")
 	}
 
-	if responsible {
-		message := createMessage("StoreKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), (key + "-" + value))
+	// If you get the message from your successor, assume he took care of
+	// backuping (to prevent overload during balancing)
+	if responsible && *source != *finger[1].responsibleNode {
+		message := createMessage("storeKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), (key + "-" + value))
 		send(message)
-		//TODO wait for answer then return
 	}
-	return
+}
+
+func balanceStorage() {
+	message := createMessage("changeResponsibility", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), "")
+	send(message)
+}
+
+// ------------------------------------------------------------------------------------Exposed services
+func getFile(filename string) ([]byte, bool) {
+	message := createMessage("getFile", contact.ContactToString(), contact.ContactToString(), generateHashCode(filename))
+	send(message)
+
+	file := <-fileChannel
+	fileAsString := string(file)
+
+	if fileAsString == "" {
+		return nil, true
+	} else {
+		return file, false
+	}
+}
+
+func deleteFile(filename string) {
+	message := createMessage("deleteFile", contact.ContactToString(), contact.ContactToString(), generateHashCode(filename))
+	send(message)
+}
+
+func storeFile(filename string, file []byte) {
+	fileAsString := string(file)
+	message := createMessage("storeData", contact.ContactToString(), contact.ContactToString(), filename+"/"+fileAsString)
+	send(message)
 }

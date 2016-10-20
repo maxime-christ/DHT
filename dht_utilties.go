@@ -135,7 +135,7 @@ func generateNodeId() string {
 func generateHashCode(value string) string {
 	byteValue := []byte(value)
 	byteKey := sha1.Sum(byteValue)
-	return string(byteKey[:])
+	return fmt.Sprintf("%x", byteKey)
 }
 
 func timeout(channel chan bool, timeoutSec int) {
