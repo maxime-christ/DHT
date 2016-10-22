@@ -457,7 +457,7 @@ func changeResponsibilityHandler() {
 		key := file.Name()
 		if !between(predecessorId, contact.NodeId, key, false, true) {
 			valueByte, _ := ioutil.ReadFile(dirname + key)
-			value := fmt.Sprintf("%x", valueByte)
+			value := string(valueByte)
 			go storeKeyValue(key, value, contact)
 			message := createMessage("storeKeyValue", contact.ContactToString(), predecessor.ContactToString(), key+"-"+value)
 			send(message)
@@ -471,7 +471,7 @@ func changeResponsibilityHandler() {
 	for _, file := range files {
 		key := file.Name()
 		valueByte, _ := ioutil.ReadFile(dirname + key)
-		value := fmt.Sprintf("%x", valueByte)
+		value := string(valueByte)
 		message := createMessage("storeKeyValue", contact.ContactToString(), predecessor.ContactToString(), key+"-"+value)
 		send(message)
 		os.Remove(dirname + key)
@@ -484,7 +484,8 @@ func requestFileHandler(key string, source *Contact) {
 		var fileAsString string
 		if exists(dirname + key) {
 			file, _ := ioutil.ReadFile(dirname + key)
-			fileAsString = fmt.Sprintf("%x", file)
+			fileAsString = string(file)
+			fmt.Println(fileAsString)
 		} else {
 			fileAsString = ""
 		}
@@ -492,7 +493,7 @@ func requestFileHandler(key string, source *Contact) {
 		send(answer)
 	} else {
 		responsibleNode := findSuccessor(key, contact)
-		message := createMessage("requestFile", source.ContactToString(), responsibleNode.ContactToString(), "")
+		message := createMessage("requestFile", source.ContactToString(), responsibleNode.ContactToString(), key)
 		send(message)
 	}
 }
@@ -526,7 +527,6 @@ func storeKeyValue(key, value string, source *Contact) {
 	}
 
 	filename := folder + key
-	fmt.Println(filename)
 	err := ioutil.WriteFile(filename, byteValue, 0644)
 	if err != nil {
 		fmt.Println("Error while storing file")
@@ -547,7 +547,7 @@ func balanceStorage() {
 
 // ------------------------------------------------------------------------------------Exposed services
 func getFile(filename string) ([]byte, bool) {
-	message := createMessage("getFile", contact.ContactToString(), contact.ContactToString(), generateHashCode(filename))
+	message := createMessage("requestFile", contact.ContactToString(), contact.ContactToString(), generateHashCode(filename))
 	send(message)
 
 	file := <-fileChannel
