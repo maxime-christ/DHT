@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,7 @@ func StartServer() {
 	http.HandleFunc("/download", downloadHandler)
 	http.HandleFunc("/update", updateHandler)
 	http.HandleFunc("/delete", deleteHandler)
+	http.HandleFunc("/search", searchHandler)
 
 	http.ListenAndServe(":8080", nil)
 }
@@ -73,4 +75,10 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	deleteFile(r.FormValue("value"))
+}
+
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	_, found := getFile(r.FormValue("value"))
+	w.Write([]byte(strconv.FormatBool(found)))
 }
