@@ -56,13 +56,14 @@ func storeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	_, err := getFile(r.FormValue("value"))
+	fileName := r.URL.Query().Get("value")
+	content, err := getFile(fileName)
 	if !err {
 		//fmt.Println("the content of the file is:", string(content))
 	} else {
 		fmt.Println("the file does not exists!")
 	}
+	w.Write(content)
 }
 
 func updateHandler(w http.ResponseWriter, r *http.Request) {

@@ -333,17 +333,10 @@ func listen(self *Contact) {
 
 		case "storeData":
 			data := strings.SplitN(message.Payload, "/", 2)
-			dataSize := len(data[1])
-			headerSize := len("storeData" + contact.ContactToString() + contact.ContactToString() + data[0])
-			totalSize := dataSize + headerSize
-			fmt.Println("string after being received is", dataSize)
-			fmt.Println("message header size is", headerSize)
-			fmt.Println("that means that the received package size is", totalSize)
 			go storeDataHandler(data[0], data[1])
 
 		case "storeKeyValue":
 			keyValue := strings.SplitN(message.Payload, "-", 2)
-			fmt.Println("string after being received is", len(keyValue[1]))
 			source := StringToContact(message.Src)
 			go storeKeyValue(keyValue[0], keyValue[1], &source)
 
@@ -592,8 +585,6 @@ func deleteFile(filename string) {
 
 func storeFile(filename string, file []byte) {
 	fileAsString := string(file)
-	fmt.Println("initial string is", len(fileAsString))
-
 	message := createMessage("storeData", contact.ContactToString(), contact.ContactToString(), filename+"/"+fileAsString)
 	send(message)
 }

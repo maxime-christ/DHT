@@ -62,19 +62,23 @@ downloadForm.onsubmit = function(event){
     return false; //Prevent enter key pressed
 }
 
-function download(){
+function downloadFile(){
     downloadFileButton.innerHTML = 'Downloading...';
     var formData = new FormData();
 
     formData.append('value', searchToDownload.value);
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/download', true);
+    xhr.open('GET', '/download?value='+searchToDownload.value, true);
+    xhr.responseType = "blob";
 
     xhr.onload = function(){
         if (xhr.status === 200) {
             // File(s) downloaded.
             downloadFileButton.innerHTML = 'Download file';
+            download(xhr.response , searchToDownload.value, "yourFile");
             resetForms();
+            
+            //alert(xhr.response);
         } else {
             alert('Download Failed');
         }
