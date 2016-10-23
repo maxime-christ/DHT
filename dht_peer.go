@@ -1,9 +1,10 @@
 package dht
 
 import (
+	"bytes"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/big"
 	"net"
@@ -223,12 +224,25 @@ func (contact *Contact) String() string {
 	return contact.Ip + ":" + contact.Port
 }
 
+//pseduo csv
 func (message *Message) String() string {
-	return message.Type + " - " + message.Src + " - " + message.Dest + " - " + message.Payload
+	sep := ","
+	return message.Type + sep + message.Src + sep + message.Dest + sep + message.Payload
 }
 
 func (contact *Contact) ContactToString() string {
 	return contact.Ip + "-" + contact.Port + "-" + contact.NodeId
+}
+
+func StringToMessage(s string) *Message {
+	data := strings.SplitN(s, ",", 4)
+
+	message := new(Message)
+	message.Type = data[0]
+	message.Src = data[1]
+	message.Dest = data[2]
+	message.Payload = data[3]
+	return message
 }
 
 func StringToContact(stringContact string) Contact {
@@ -252,27 +266,31 @@ func createMessage(msgType, source, dest, payload string) *Message {
 
 func listen(self *Contact) {
 	contact = self
-	udpAddress, err := net.ResolveUDPAddr("udp4", self.String())
+	tcpAddress, err := net.ResolveTCPAddr("tcp4", self.String())
 	if err != nil {
-		fmt.Println("Error while resolving", udpAddress)
+		fmt.Println("Error while resolving", tcpAddress)
 	}
 
-	connection, err := net.ListenUDP("udp4", udpAddress)
+	tcpListener, err := net.ListenTCP("tcp4", tcpAddress)
 	if err != nil {
-		fmt.Println("Error while listening to", udpAddress)
+		fmt.Println("Error while listening to", tcpAddress)
 		fmt.Println(err)
 	}
-	defer connection.Close()
-
-	decoder := json.NewDecoder(connection)
+	defer tcpListener.Close()
 
 	for {
-		message := new(Message)
-		err = decoder.Decode(message)
+		connection, err := tcpListener.Accept()
 		if err != nil {
-			fmt.Println("Unvalid message format", self.Port)
+			fmt.Println("Error while accepting connection")
 		}
-		// fmt.Println("The message type is:", message.Type)
+
+		var buf bytes.Buffer
+		io.Copy(&buf, connection)
+		connection.Close()
+		if err != nil {
+			fmt.Println("Error while reading incoming message")
+		}
+		message := StringToMessage(string(buf.Bytes()))
 		switch message.Type {
 		case "requestFinger":
 			index, _ := strconv.Atoi(message.Payload)
@@ -315,10 +333,17 @@ func listen(self *Contact) {
 
 		case "storeData":
 			data := strings.SplitN(message.Payload, "/", 2)
+			dataSize := len(data[1])
+			headerSize := len("storeData" + contact.ContactToString() + contact.ContactToString() + data[0])
+			totalSize := dataSize + headerSize
+			fmt.Println("string after being received is", dataSize)
+			fmt.Println("message header size is", headerSize)
+			fmt.Println("that means that the received package size is", totalSize)
 			go storeDataHandler(data[0], data[1])
 
 		case "storeKeyValue":
-			keyValue := strings.Split(message.Payload, "-")
+			keyValue := strings.SplitN(message.Payload, "-", 2)
+			fmt.Println("string after being received is", len(keyValue[1]))
 			source := StringToContact(message.Src)
 			go storeKeyValue(keyValue[0], keyValue[1], &source)
 
@@ -364,24 +389,25 @@ func send(message *Message) {
 	}
 
 	dest := StringToContact(message.Dest)
-	udpAddress, err := net.ResolveUDPAddr("udp4", (&dest).String())
+	tcpAddress, err := net.ResolveTCPAddr("tcp4", (&dest).String())
 	if err != nil {
-		fmt.Println("Error while resolving", udpAddress)
+		fmt.Println("Error while resolving", tcpAddress)
 		return
 	}
 
-	conn, err := net.DialUDP("udp", nil, udpAddress)
+	conn, err := net.DialTCP("tcp", nil, tcpAddress)
 	if err != nil {
-		fmt.Println("Error while connecting to", udpAddress)
+		fmt.Println("Error while connecting to", tcpAddress)
 		return
 	}
 	defer conn.Close()
 
-	encoder := json.NewEncoder(conn)
-
-	err = encoder.Encode(message)
+	buf := bytes.NewBuffer([]byte(message.String()))
+	io.Copy(conn, buf)
+	// _, err = conn.Write([]byte(message.String()))
 	if err != nil {
-		fmt.Println("Error while sending a message", udpAddress)
+		fmt.Println("Error while sending a message", tcpAddress)
+		fmt.Println("Error is", err)
 		return
 	}
 }
@@ -390,7 +416,6 @@ func requestFinger(peer *Contact, fingerIndex int) *Contact {
 	message := createMessage("requestFinger", contact.ContactToString(), peer.ContactToString(), strconv.Itoa(fingerIndex))
 	send(message)
 
-	//TODO timeout that shit
 	answer := <-answerChannel
 	return &answer
 }
@@ -422,6 +447,10 @@ func joinRingHandler(source *Contact) {
 }
 
 func storeDataHandler(filename, value string) {
+	err := ioutil.WriteFile("/vagrant/Distributed_system/Go/strDataHandlerCpy", []byte(value), 0644)
+	if err != nil {
+		fmt.Println("Error while storing file")
+	}
 	key := generateHashCode(filename)
 	responsibleNode := findSuccessor(key, contact)
 	message := createMessage("storeKeyValue", contact.ContactToString(), responsibleNode.ContactToString(), (key + "-" + value))
@@ -546,18 +575,19 @@ func balanceStorage() {
 }
 
 // ------------------------------------------------------------------------------------Exposed services
-func getFile(filename string) ([]byte, bool) {
+func getFile(filename string) (file []byte, err bool) {
 	message := createMessage("requestFile", contact.ContactToString(), contact.ContactToString(), generateHashCode(filename))
 	send(message)
 
-	file := <-fileChannel
+	file = <-fileChannel
 	fileAsString := string(file)
 
 	if fileAsString == "" {
-		return nil, true
+		err = true
 	} else {
-		return file, false
+		err = false
 	}
+	return file, err
 }
 
 func deleteFile(filename string) {
@@ -567,6 +597,13 @@ func deleteFile(filename string) {
 
 func storeFile(filename string, file []byte) {
 	fileAsString := string(file)
+	fmt.Println("initial string is", len(fileAsString))
+
+	err := ioutil.WriteFile("/vagrant/Distributed_system/Go/strFileCpy", []byte(fileAsString), 0644)
+	if err != nil {
+		fmt.Println("Error while storing file")
+	}
+
 	message := createMessage("storeData", contact.ContactToString(), contact.ContactToString(), filename+"/"+fileAsString)
 	send(message)
 }

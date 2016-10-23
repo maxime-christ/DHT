@@ -32,7 +32,6 @@ func storeHandler(w http.ResponseWriter, r *http.Request) {
 	url := strings.Split(r.URL.Path, "/store")
 	http.Redirect(w, r, url[0], 303)
 
-	r.ParseMultipartForm(32 << 20)
 	file, handler, err := r.FormFile("file")
 	if err != nil {
 		fmt.Println(err)
@@ -45,20 +44,26 @@ func storeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+	defer os.Remove("/tmp/" + handler.Filename)
+
 	io.Copy(f, file)
 
-	content, _ := ioutil.ReadFile(handler.Filename)
+	// content := make([]byte, 3<<20)
+	// n, err := f.Read(content)
+	// fmt.Println("read", n, "bytes, err is", err, "content is :", string(content))
+
+	content, _ := ioutil.ReadFile("/tmp/" + handler.Filename)
 	storeFile(handler.Filename, content)
 }
 
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	getFile(r.FormValue("value"))
-	// if !err {
-	// 	fmt.Println("the content of the file is:", string(content))
-	// } else {
-	// 	fmt.Println("the file does not exists!")
-	// }
+	content, err := getFile(r.FormValue("value"))
+	if !err {
+		fmt.Println("the content of the file is:", string(content))
+	} else {
+		fmt.Println("the file does not exists!")
+	}
 }
 
 func updateHandler(w http.ResponseWriter, r *http.Request) {
