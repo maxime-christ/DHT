@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 )
 
 var chttp = http.NewServeMux()
@@ -31,8 +30,6 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func storeHandler(w http.ResponseWriter, r *http.Request) {
-	url := strings.Split(r.URL.Path, "/store")
-	http.Redirect(w, r, url[0], 303)
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
@@ -60,25 +57,27 @@ func storeHandler(w http.ResponseWriter, r *http.Request) {
 
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	content, err := getFile(r.FormValue("value"))
+	_, err := getFile(r.FormValue("value"))
 	if !err {
-		fmt.Println("the content of the file is:", string(content))
+		//fmt.Println("the content of the file is:", string(content))
 	} else {
 		fmt.Println("the file does not exists!")
 	}
 }
 
 func updateHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Updating")
 	storeHandler(w, r)
 }
 
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	deleteFile(r.FormValue("value"))
+	fileName := r.URL.Query().Get("value")
+	fmt.Println("delete file : ", fileName)
+	deleteFile(fileName)
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	_, found := getFile(r.FormValue("value"))
-	w.Write([]byte(strconv.FormatBool(found)))
+	fileName := r.URL.Query().Get("value")
+	_, notFound := getFile(fileName)
+	w.Write([]byte(strconv.FormatBool(notFound)))
 }

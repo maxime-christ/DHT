@@ -447,10 +447,6 @@ func joinRingHandler(source *Contact) {
 }
 
 func storeDataHandler(filename, value string) {
-	err := ioutil.WriteFile("/vagrant/Distributed_system/Go/strDataHandlerCpy", []byte(value), 0644)
-	if err != nil {
-		fmt.Println("Error while storing file")
-	}
 	key := generateHashCode(filename)
 	responsibleNode := findSuccessor(key, contact)
 	message := createMessage("storeKeyValue", contact.ContactToString(), responsibleNode.ContactToString(), (key + "-" + value))
@@ -514,7 +510,6 @@ func requestFileHandler(key string, source *Contact) {
 		if exists(dirname + key) {
 			file, _ := ioutil.ReadFile(dirname + key)
 			fileAsString = string(file)
-			fmt.Println(fileAsString)
 		} else {
 			fileAsString = ""
 		}
@@ -598,11 +593,6 @@ func deleteFile(filename string) {
 func storeFile(filename string, file []byte) {
 	fileAsString := string(file)
 	fmt.Println("initial string is", len(fileAsString))
-
-	err := ioutil.WriteFile("/vagrant/Distributed_system/Go/strFileCpy", []byte(fileAsString), 0644)
-	if err != nil {
-		fmt.Println("Error while storing file")
-	}
 
 	message := createMessage("storeData", contact.ContactToString(), contact.ContactToString(), filename+"/"+fileAsString)
 	send(message)

@@ -58,6 +58,10 @@ uploadForm.onsubmit = function(event) {
     xhr.send(formData);
 }
 
+downloadForm.onsubmit = function(event){
+    return false; //Prevent enter key pressed
+}
+
 function download(){
     downloadFileButton.innerHTML = 'Downloading...';
     var formData = new FormData();
@@ -78,6 +82,10 @@ function download(){
     xhr.send(formData);
 }
 
+updtateForm.onsubmit = function(event){
+    return false; //Prevent enter key pressed
+}
+
 function update(){
     updateFileButton.innerHTML = 'Updating...';
     var files = searchToUpdate.files;
@@ -86,7 +94,7 @@ function update(){
 
     formData.append('file', file, file.name);
     var xhr = new XMLHttpRequest();
-    xhr.open('PUT', '/update', true);
+    xhr.open('POST', '/update', true);
 
     xhr.onload = function(){
         if(xhr.status=== 200)
@@ -100,13 +108,17 @@ function update(){
     xhr.send(formData);
 }
 
+deleteForm.onsubmit = function(event){
+    return false; //Prevent enter key pressed
+}
+
 function deleteFile(){
     deleteFileButton.innerHTML = "Deleting file...";
     var formData = new FormData();
 
     formData.append('value', searchToDelete.value);
     var xhr = new XMLHttpRequest();
-    xhr.open('DELETE', '/delete', true);
+    xhr.open('DELETE', '/delete?value='+searchToDelete.value, true);
 
     xhr.onload = function(){
         if (xhr.status === 200){
@@ -126,7 +138,7 @@ function refreshUI(field){
     if (field === "download"){
         downloadFileButton.style.display = 'none';
         okIconDownload.style.display = 'none';
-        failIconDownload.display = 'none';
+        failIconDownload.style.display = 'none';
     } else if (field === "update"){
         updateFileButton.style.display = 'none';
         okIconUpdate.style.display = 'none';
@@ -168,10 +180,8 @@ function search(toSearch, field){
     }
     button.innerHTML = "Searching..."
     wait.style.display = 'inline'
-    var formData = new FormData();
-    formData.append("value", toSearch);
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/search', true);
+    xhr.open('GET', '/search?value='+toSearch, true);
     xhr.onload = function(){
         if (xhr.status === 200) {
             // File(s) uploaded.
@@ -190,7 +200,7 @@ function search(toSearch, field){
             alert('Search Failed');
         }
     };
-    xhr.send(formData);
+    xhr.send("value:lol");
 }
 
 
