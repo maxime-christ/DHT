@@ -676,9 +676,10 @@ func storeFile(filename string, file []byte) {
 	send(message)
 }
 
-func joinRing(source *Contact) bool {
-	pingMessage := createMessage("ping", contact.ContactToString(), dest, "")
+func joinRing(dest *Contact) bool {
+	pingMessage := createMessage("ping", contact.ContactToString(), dest.ContactToString(), "")
 	send(pingMessage)
+	timeoutChannel := make(chan bool)
 	go timeout(timeoutChannel, 3)
 	select {
 	case <-pongChannel:
@@ -687,11 +688,11 @@ func joinRing(source *Contact) bool {
 		return false
 	}
 
-	idRequest := createMessage("requestId", contact.ContactToString(), source.ContactToString(), "")
+	idRequest := createMessage("requestId", contact.ContactToString(), dest.ContactToString(), "")
 	send(idRequest)
 
-	sourceWithId := <-answerChannel
-	source = &sourceWithId
-	addToRing(source)
+	destWithId := <-answerChannel
+	dest = &destWithId
+	addToRing(dest)
 	return true
 }
