@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Contact struct {
@@ -55,6 +56,8 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	}
 
 	fmt.Println("Hey, i'm", contact.NodeId, "and run on port", Port)
+	os.MkdirAll("./storage/"+contact.NodeId+"/MainStorage/", 0744)
+	os.MkdirAll("./storage/"+contact.NodeId+"/Copy/", 0744)
 
 	predecessor = contact
 	secondPredecessor = contact
@@ -112,6 +115,7 @@ func initFingerTable(ring *Contact) {
 	secondPredecessor = requestFinger(predecessor, -1)
 	secondSuccessor := requestFinger(finger[1].responsibleNode, 1)
 	setRemoteFinger(secondSuccessor, -2, contact)
+	setRemoteFinger(finger[1].responsibleNode, -2, predecessor)
 	for i := 1; i < networkSize; i++ {
 		if between(contact.NodeId, finger[i].responsibleNode.NodeId, finger[i+1].start, false, true) {
 			finger[i+1].responsibleNode = finger[i].responsibleNode
@@ -380,13 +384,16 @@ func listen(self *Contact) {
 
 		case "circleHealed":
 			healedCircleChannel <- true
+
+		case "leave":
+			go healCircle(message.Src, true)
 		}
 	}
 }
 
 func send(message *Message) {
 	if message.Type != "ping" && message.Type != "pong" && message.Type != "requestId" {
-		ping(message.Src, message.Dest)
+		message.Dest = ping(message.Src, message.Dest)
 	}
 
 	dest := StringToContact(message.Dest)
@@ -413,7 +420,7 @@ func send(message *Message) {
 	}
 }
 
-func ping(src, dest string) {
+func ping(src, dest string) string {
 	timeoutChannel := make(chan bool)
 	pingMessage := createMessage("ping", contact.ContactToString(), dest, "")
 	send(pingMessage)
@@ -424,35 +431,42 @@ func ping(src, dest string) {
 	case <-timeoutChannel:
 		fmt.Println(dest, ": host is dead")
 		if dest == predecessor.ContactToString() {
-			healCircle(src)
+			healCircle(src, false)
 		} else {
 			checkPredecessor(contact)
 			<-healedCircleChannel
+			temp := StringToContact(dest)
+			destContact := findSuccessor(temp.NodeId, contact)
+			dest = destContact.ContactToString()
 			ping(src, dest)
 		}
 	}
+	return dest
 }
 
-func healCircle(src string) {
+func healCircle(src string, intented bool) {
+	fmt.Println("Node", contact.ContactToString(), "ask for heal about", src)
 	deadNode := predecessor
 	predecessor = secondPredecessor
 	secondPredecessor = requestFinger(predecessor, -1)
+	setRemoteFinger(finger[1].responsibleNode, -2, predecessor)
 
 	// Take responisbility for previous interval
 	copyDir := "storage/" + contact.NodeId + "/Copy/"
 	mainDir := "storage/" + contact.NodeId + "/MainStorage/"
-	if !exists(mainDir) {
-		os.Mkdir(mainDir, 744)
-	}
+
 	files, _ := ioutil.ReadDir(copyDir)
 	for _, file := range files {
 		key := file.Name()
+		valueByte, _ := ioutil.ReadFile(copyDir + key)
+		message := createMessage("storeKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), key+"-"+string(valueByte))
+		send(message)
 		os.Rename(copyDir+key, mainDir+key)
 	}
 
 	var nodeToUpdate Contact
 	var deadNodeIdInt, power, toSubstract, result, modulo, addressSpace big.Int
-	(&deadNodeIdInt).SetString(contact.NodeId, 16)
+	(&deadNodeIdInt).SetString(deadNode.NodeId, 16)
 	for i := 1; i < networkSize+1; i++ {
 		power = *big.NewInt(int64(i - 1))
 		(&toSubstract).Exp(big.NewInt(2), &power, nil)
@@ -472,7 +486,9 @@ func healCircle(src string) {
 	}
 
 	message := createMessage("circleHealed", contact.ContactToString(), src, "")
-	send(message)
+	if !intented {
+		send(message)
+	}
 }
 
 func nodeLeaveHandler(source, deadNode *Contact, index int) {
@@ -488,7 +504,7 @@ func nodeLeaveHandler(source, deadNode *Contact, index int) {
 				key := file.Name()
 				valueBytes, _ := ioutil.ReadFile(dirname + key)
 				value := string(valueBytes)
-				message := createMessage("storeKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), key+"/"+value)
+				message := createMessage("storeKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), key+"-"+value)
 				send(message)
 			}
 		}
@@ -496,6 +512,9 @@ func nodeLeaveHandler(source, deadNode *Contact, index int) {
 }
 
 func checkPredecessor(source *Contact) {
+	fmt.Println("CheckPredecessor by ", contact.ContactToString())
+	fmt.Println("My predecessor is", predecessor.ContactToString())
+	time.Sleep(1 * time.Second)
 	message := createMessage("checkPredecessor", source.ContactToString(), predecessor.ContactToString(), "")
 	send(message)
 }
@@ -604,14 +623,17 @@ func requestFileHandler(key string, source *Contact) {
 
 func deleteFileHandler(key string) {
 	if isResponsible(key) {
+		message := createMessage("deleteFile", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), key)
+		send(message)
 		dirname := "storage/" + contact.NodeId + "/MainStorage/"
 		if exists(dirname + key) {
 			os.Remove(dirname + key)
 		}
 	} else {
-		responsibleNode := findSuccessor(key, contact)
-		message := createMessage("deleteFile", contact.ContactToString(), responsibleNode.ContactToString(), key)
-		send(message)
+		dirname := "storage/" + contact.NodeId + "/Copy/"
+		if exists(dirname + key) {
+			os.Remove(dirname + key)
+		}
 	}
 }
 
@@ -625,15 +647,11 @@ func storeKeyValue(key, value string, source *Contact) {
 	} else {
 		folder += "/storage/" + contact.NodeId + "/Copy/"
 	}
-	if !exists(folder) {
-		fmt.Println("That does not exist yet")
-		os.MkdirAll(folder, 0744)
-	}
 
 	filename := folder + key
 	err := ioutil.WriteFile(filename, byteValue, 0644)
 	if err != nil {
-		fmt.Println("Error while storing file")
+		fmt.Println("Error while storing file", err)
 	}
 
 	// If you get the message from your successor, assume he took care of
@@ -666,7 +684,9 @@ func getFile(filename string) (file []byte, err bool) {
 }
 
 func deleteFile(filename string) {
-	message := createMessage("deleteFile", contact.ContactToString(), contact.ContactToString(), generateHashCode(filename))
+	hashFileName := generateHashCode(filename)
+	responsibleNode := findSuccessor(hashFileName, contact)
+	message := createMessage("deleteFile", contact.ContactToString(), responsibleNode.ContactToString(), hashFileName)
 	send(message)
 }
 
@@ -695,4 +715,10 @@ func joinRing(dest *Contact) bool {
 	dest = &destWithId
 	addToRing(dest)
 	return true
+}
+
+func leaveRing() {
+	message := createMessage("leave", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), "")
+	send(message)
+	os.Exit(0)
 }

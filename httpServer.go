@@ -11,7 +11,7 @@ import (
 
 var chttp = http.NewServeMux()
 
-func StartServer() {
+func StartServer(port string) {
 
 	chttp.Handle("/", http.FileServer(http.Dir("./src/dht/server/")))
 
@@ -23,7 +23,7 @@ func StartServer() {
 	http.HandleFunc("/search", searchHandler)
 	http.HandleFunc("/join", joinHandler)
 
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":"+port, nil)
 }
 
 func HomeHandler(w http.ResponseWriter, r *http.Request) {
