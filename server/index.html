@@ -11,6 +11,16 @@
         <script src='//js.zapjs.com/js/download.js'></script>
     </head>
     <body>
+
+        <form id="connectForm">
+            <label>IP:</label>
+            <input type="text" name="ip" id="ipField" required>
+            <label>Port:</label>
+            <input type="text" name="port" id="portField" required>
+            <button type='button'
+                    id="connectButton"
+                    onclick="connect()">Connect</button>
+        </form>
         
         <h1>Grand Repository in the Sky</h1>
 

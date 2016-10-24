@@ -31,6 +31,22 @@ var okIconDelete = document.getElementById('deleteSearchOK');
 var failIconDelete = document.getElementById('deleteSearchFail');
 
 
+function connect(){
+    var ip = document.getElementById("ipField").value;
+    var port = document.getElementById("portField").value;
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/join?ip='+ip+'&port='+port, true)
+    xhr.onload = function(){
+        if (xhr.status === 200) {
+            alert(xhr.responseText);
+        } else {
+           alert("Connection Error");
+        }
+    };
+    xhr.send()
+}
+
 uploadForm.onsubmit = function(event) {
     event.preventDefault();
     uploadFileButton.innerHTML = 'Uploading...'

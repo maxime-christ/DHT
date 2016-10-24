@@ -87,6 +87,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 func joinHandler(w http.ResponseWriter, r *http.Request) {
 	ip := r.URL.Query().Get("ip")
 	port := r.URL.Query().Get("port")
+	fmt.Println("ip:", ip, "port:", port)
 	contact := StringToContact(ip + "-" + port + "-")
 	w.Write([]byte(strconv.FormatBool(joinRing(&contact))))
 }
