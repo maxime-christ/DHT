@@ -252,7 +252,7 @@ func StringToMessage(s string) *Message {
 }
 
 func StringToContact(stringContact string) Contact {
-	res := strings.Split(stringContact, "-")
+	res := strings.SplitN(stringContact, "-", 3)
 	contact := new(Contact)
 	contact.Ip = res[0]
 	contact.Port = res[1]
@@ -322,10 +322,6 @@ func listen(self *Contact) {
 				secondPredecessor = &source
 			}
 
-		case "joinRing":
-			source := StringToContact(message.Src)
-			go joinRingHandler(&source)
-
 		case "findPredecessor":
 			go findPredecessor(message.Src, message.Payload)
 
@@ -389,7 +385,7 @@ func listen(self *Contact) {
 }
 
 func send(message *Message) {
-	if message.Type != "ping" && message.Type != "pong" {
+	if message.Type != "ping" && message.Type != "pong" && message.Type != "requestId" {
 		ping(message.Src, message.Dest)
 	}
 
@@ -528,14 +524,6 @@ func requestIdHandler(source *Contact) {
 func setRemoteFinger(peer *Contact, fingerIndex int, newContact *Contact) {
 	message := createMessage("setFinger", newContact.ContactToString(), peer.ContactToString(), strconv.Itoa(fingerIndex))
 	send(message)
-}
-
-func joinRingHandler(source *Contact) {
-	idRequest := createMessage("requestId", contact.ContactToString(), source.ContactToString(), "")
-	send(idRequest)
-	sourceWithId := <-answerChannel
-	source = &sourceWithId
-	addToRing(source)
 }
 
 func storeDataHandler(filename, value string) {
@@ -686,4 +674,24 @@ func storeFile(filename string, file []byte) {
 	fileAsString := string(file)
 	message := createMessage("storeData", contact.ContactToString(), contact.ContactToString(), filename+"/"+fileAsString)
 	send(message)
+}
+
+func joinRing(source *Contact) bool {
+	pingMessage := createMessage("ping", contact.ContactToString(), dest, "")
+	send(pingMessage)
+	go timeout(timeoutChannel, 3)
+	select {
+	case <-pongChannel:
+		break
+	case <-timeoutChannel:
+		return false
+	}
+
+	idRequest := createMessage("requestId", contact.ContactToString(), source.ContactToString(), "")
+	send(idRequest)
+
+	sourceWithId := <-answerChannel
+	source = &sourceWithId
+	addToRing(source)
+	return true
 }

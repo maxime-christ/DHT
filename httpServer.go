@@ -21,6 +21,7 @@ func StartServer() {
 	http.HandleFunc("/update", updateHandler)
 	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/search", searchHandler)
+	http.HandleFunc("/join", joinHandler)
 
 	http.ListenAndServe(":8080", nil)
 }
@@ -81,4 +82,10 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	fileName := r.URL.Query().Get("value")
 	_, notFound := getFile(fileName)
 	w.Write([]byte(strconv.FormatBool(notFound)))
+}
+
+func joinHandler(w http.ResponseWriter, r *http.Request) {
+	ip := r.URL.Query().Get("ip")
+	port := r.URL.Query().Get("port")
+	w.Write([]byte(strconv.FormatBool(joinRing(StringToContact(ip + "-" + port + "-")))))
 }
