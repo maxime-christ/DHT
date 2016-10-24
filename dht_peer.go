@@ -33,11 +33,13 @@ type Message struct {
 }
 
 var predecessor *Contact
+var secondPredecessor *Contact
 var contact *Contact
 var finger []*DHTFinger
 var networkSize int
 var answerChannel chan Contact
 var pongChannel chan bool
+var healedCircleChannel chan bool
 var fileChannel chan []byte
 
 func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
@@ -55,6 +57,7 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	fmt.Println("Hey, i'm", contact.NodeId, "and run on port", Port)
 
 	predecessor = contact
+	secondPredecessor = contact
 
 	NodeIdBytes, _ := hex.DecodeString(contact.NodeId)
 
@@ -75,6 +78,7 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	}
 	answerChannel = make(chan Contact)
 	pongChannel = make(chan bool)
+	healedCircleChannel = make(chan bool)
 	fileChannel = make(chan []byte)
 	go listen(contact)
 
@@ -105,6 +109,9 @@ func initFingerTable(ring *Contact) {
 	predecessor = requestFinger(finger[1].responsibleNode, -1)
 	setRemoteFinger(finger[1].responsibleNode, -1, contact)
 	setRemoteFinger(predecessor, 1, contact)
+	secondPredecessor = requestFinger(predecessor, -1)
+	secondSuccessor := requestFinger(finger[1].responsibleNode, 1)
+	setRemoteFinger(secondSuccessor, -2, contact)
 	for i := 1; i < networkSize; i++ {
 		if between(contact.NodeId, finger[i].responsibleNode.NodeId, finger[i+1].start, false, true) {
 			finger[i+1].responsibleNode = finger[i].responsibleNode
@@ -112,7 +119,6 @@ func initFingerTable(ring *Contact) {
 			finger[i+1].responsibleNode = findSuccessor(finger[i+1].start, ring)
 		}
 	}
-	// printFingerTable()
 }
 
 func updateOthers() {
@@ -310,8 +316,10 @@ func listen(self *Contact) {
 			source := StringToContact(message.Src)
 			if index >= 0 {
 				finger[index].responsibleNode = &source //TODO Pb here maybe
-			} else {
+			} else if index == -1 {
 				predecessor = &source
+			} else if index == -2 {
+				secondPredecessor = &source
 			}
 
 		case "joinRing":
@@ -362,23 +370,27 @@ func listen(self *Contact) {
 
 		case "deleteFile":
 			go deleteFileHandler(message.Payload)
+
+		case "checkPredecessor":
+			source := StringToContact(message.Src)
+			go checkPredecessor(&source)
+
+		case "nodeLeave":
+			source := StringToContact(message.Src)
+			data := strings.SplitN(message.Payload, "/", 2)
+			index, _ := strconv.Atoi(data[0])
+			deadNode := StringToContact(data[1])
+			go nodeLeaveHandler(&source, &deadNode, index)
+
+		case "circleHealed":
+			healedCircleChannel <- true
 		}
 	}
 }
 
 func send(message *Message) {
 	if message.Type != "ping" && message.Type != "pong" {
-		timeoutChannel := make(chan bool)
-		pingMessage := createMessage("ping", contact.ContactToString(), message.Dest, "")
-		send(pingMessage)
-		go timeout(timeoutChannel, 3)
-		select {
-		case <-pongChannel:
-			break
-		case <-timeoutChannel:
-			fmt.Println(message.Dest, "host is dead")
-			//TODO: remove peer from circle
-		}
+		ping(message.Src, message.Dest)
 	}
 
 	dest := StringToContact(message.Dest)
@@ -403,6 +415,93 @@ func send(message *Message) {
 		fmt.Println("Error is", err)
 		return
 	}
+}
+
+func ping(src, dest string) {
+	timeoutChannel := make(chan bool)
+	pingMessage := createMessage("ping", contact.ContactToString(), dest, "")
+	send(pingMessage)
+	go timeout(timeoutChannel, 3)
+	select {
+	case <-pongChannel:
+		break
+	case <-timeoutChannel:
+		fmt.Println(dest, ": host is dead")
+		if dest == predecessor.ContactToString() {
+			healCircle(src)
+		} else {
+			checkPredecessor(contact)
+			<-healedCircleChannel
+			ping(src, dest)
+		}
+	}
+}
+
+func healCircle(src string) {
+	deadNode := predecessor
+	predecessor = secondPredecessor
+	secondPredecessor = requestFinger(predecessor, -1)
+
+	// Take responisbility for previous interval
+	copyDir := "storage/" + contact.NodeId + "/Copy/"
+	mainDir := "storage/" + contact.NodeId + "/MainStorage/"
+	if !exists(mainDir) {
+		os.Mkdir(mainDir, 744)
+	}
+	files, _ := ioutil.ReadDir(copyDir)
+	for _, file := range files {
+		key := file.Name()
+		os.Rename(copyDir+key, mainDir+key)
+	}
+
+	var nodeToUpdate Contact
+	var deadNodeIdInt, power, toSubstract, result, modulo, addressSpace big.Int
+	(&deadNodeIdInt).SetString(contact.NodeId, 16)
+	for i := 1; i < networkSize+1; i++ {
+		power = *big.NewInt(int64(i - 1))
+		(&toSubstract).Exp(big.NewInt(2), &power, nil)
+		(&result).Sub(&deadNodeIdInt, &toSubstract)
+		(&addressSpace).Exp(big.NewInt(2), big.NewInt(int64(networkSize)), nil)
+		(&modulo).Mod(&result, &addressSpace)
+		targetNode := hex.EncodeToString(modulo.Bytes())
+		if targetNode == "" {
+			targetNode = "00"
+		}
+		//targetNode = (deadNode - 2 ^ (i-1)) mod 2 ^ m
+		findPredecessor(contact.ContactToString(), targetNode)
+		nodeToUpdate = <-answerChannel
+
+		message := createMessage("nodeLeave", contact.ContactToString(), (&nodeToUpdate).ContactToString(), strconv.Itoa(i)+"/"+deadNode.ContactToString())
+		send(message)
+	}
+
+	message := createMessage("circleHealed", contact.ContactToString(), src, "")
+	send(message)
+}
+
+func nodeLeaveHandler(source, deadNode *Contact, index int) {
+	if finger[index].responsibleNode.ContactToString() == deadNode.ContactToString() {
+		finger[index].responsibleNode = source
+		message := createMessage("nodeLeave", source.ContactToString(), predecessor.ContactToString(), strconv.Itoa(index)+"/"+deadNode.ContactToString())
+		send(message)
+
+		if index == 1 { //That means you were the predecessor of the dead node
+			dirname := "storage/" + contact.NodeId + "/MainStorage/"
+			files, _ := ioutil.ReadDir(dirname)
+			for _, file := range files {
+				key := file.Name()
+				valueBytes, _ := ioutil.ReadFile(dirname + key)
+				value := string(valueBytes)
+				message := createMessage("storeKeyValue", contact.ContactToString(), finger[1].responsibleNode.ContactToString(), key+"/"+value)
+				send(message)
+			}
+		}
+	}
+}
+
+func checkPredecessor(source *Contact) {
+	message := createMessage("checkPredecessor", source.ContactToString(), predecessor.ContactToString(), "")
+	send(message)
 }
 
 func requestFinger(peer *Contact, fingerIndex int) *Contact {
