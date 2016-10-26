@@ -10,6 +10,7 @@ import (
 )
 
 var chttp = http.NewServeMux()
+var circleJoined = false
 
 func StartServer(port string) {
 
@@ -22,6 +23,8 @@ func StartServer(port string) {
 	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/search", searchHandler)
 	http.HandleFunc("/join", joinHandler)
+	http.HandleFunc("/status", statusHandler)
+	http.HandleFunc("/leave", leaveHandler)
 
 	http.ListenAndServe(":"+port, nil)
 }
@@ -31,29 +34,19 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func storeHandler(w http.ResponseWriter, r *http.Request) {
-
-	file, handler, err := r.FormFile("file")
+	r.ParseForm()
+	_, handler, err := r.FormFile("file")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer file.Close()
-	f, err := os.OpenFile("/tmp/"+handler.Filename, os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		fmt.Println(err)
+	_, notFound := (getFile(handler.Filename))
+	if !notFound { //File already exist - stop upload
+		w.Write([]byte("FileExists"))
 		return
 	}
-	defer f.Close()
-	defer os.Remove("/tmp/" + handler.Filename)
-
-	io.Copy(f, file)
-
-	// content := make([]byte, 3<<20)
-	// n, err := f.Read(content)
-	// fmt.Println("read", n, "bytes, err is", err, "content is :", string(content))
-
-	content, _ := ioutil.ReadFile("/tmp/" + handler.Filename)
-	storeFile(handler.Filename, content)
+	fmt.Println("Storing", handler.Filename)
+	store(w, r)
 }
 
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
@@ -62,14 +55,26 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	if !err {
 		//fmt.Println("the content of the file is:", string(content))
 	} else {
-		fmt.Println("the file does not exists!")
+		fmt.Println("The file does not exists!")
 	}
 	w.Write(content)
 }
 
 func updateHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Updating")
-	storeHandler(w, r)
+	r.ParseForm()
+	_, handler, err := r.FormFile("file")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	_, notFound := (getFile(handler.Filename))
+	if notFound { //File does not  exist - stop update
+		//According to the frontend, this should not happen
+		w.Write([]byte("NotFileExists"))
+		return
+	}
+	store(w, r)
 }
 
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
@@ -89,5 +94,38 @@ func joinHandler(w http.ResponseWriter, r *http.Request) {
 	port := r.URL.Query().Get("port")
 	fmt.Println("ip:", ip, "port:", port)
 	contact := StringToContact(ip + "-" + port + "-")
-	w.Write([]byte(strconv.FormatBool(joinRing(&contact))))
+	circleJoined = joinRing(&contact)
+	w.Write([]byte(strconv.FormatBool(circleJoined)))
+}
+
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+	response := contact.NodeId + "/" + strconv.FormatBool(circleJoined)
+	w.Write([]byte(response))
+}
+
+func leaveHandler(w http.ResponseWriter, r *http.Request) {
+	leaveRing()
+}
+
+func store(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+	f, err := os.OpenFile("/tmp/"+handler.Filename, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer f.Close()
+	defer os.Remove("/tmp/" + handler.Filename)
+
+	io.Copy(f, file)
+
+	content, _ := ioutil.ReadFile("/tmp/" + handler.Filename)
+	storeFile(handler.Filename, content)
+	w.Write([]byte("OK"))
 }
