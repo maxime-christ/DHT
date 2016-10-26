@@ -47,12 +47,8 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	contact.Ip = Ip
 	contact.Port = Port
 	networkSize = nwSize
-	if NodeId == nil {
-		genNodeId := generateNodeId()
-		contact.NodeId = genNodeId
-	} else {
-		contact.NodeId = *NodeId
-	}
+
+	contact.NodeId = getNodeID()
 
 	fmt.Println("Hey, i'm", contact.NodeId, "and run on port", Port)
 	os.MkdirAll("./storage/"+contact.NodeId+"/MainStorage/", 0744)
@@ -423,6 +419,8 @@ func ping(src, dest string) string {
 	timeoutChannel := make(chan bool)
 	pingMessage := createMessage("ping", contact.ContactToString(), dest, "")
 	send(pingMessage)
+	destId := StringToContact(dest).NodeId
+	predID := predecessor.NodeId
 	go timeout(timeoutChannel, 3)
 	select {
 	case <-pongChannel:
@@ -431,6 +429,8 @@ func ping(src, dest string) string {
 		fmt.Println(dest, ": host is dead")
 		if dest == predecessor.ContactToString() {
 			healCircle(src, false)
+		} else if between(predID, contact.NodeId, destId, false, false) {
+			//TODO send message to src to notify he may be out of the circle
 		} else {
 			checkPredecessor(contact)
 			<-healedCircleChannel

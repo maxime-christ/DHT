@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/nu7hatch/gouuid"
+	"io/ioutil"
 	"math/big"
 	"os"
 	"time"
@@ -152,4 +153,16 @@ func exists(path string) bool {
 		return false
 	}
 	return true
+}
+
+func getNodeID() string {
+	if exists("./config.txt") { //Read existing ID from config file
+		file, _ := ioutil.ReadFile("./config.txt")
+		fmt.Println(string(file))
+		return string(file)
+	} else { //Generate own ID and store it
+		nodeID := generateNodeId()
+		ioutil.WriteFile("config.txt", []byte(nodeID), 0644)
+		return nodeID
+	}
 }
