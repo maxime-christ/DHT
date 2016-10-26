@@ -11,7 +11,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type Contact struct {
@@ -514,7 +513,6 @@ func nodeLeaveHandler(source, deadNode *Contact, index int) {
 func checkPredecessor(source *Contact) {
 	fmt.Println("CheckPredecessor by ", contact.ContactToString())
 	fmt.Println("My predecessor is", predecessor.ContactToString())
-	time.Sleep(1 * time.Second)
 	message := createMessage("checkPredecessor", source.ContactToString(), predecessor.ContactToString(), "")
 	send(message)
 }

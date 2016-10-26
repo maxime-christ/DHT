@@ -10,7 +10,7 @@
         <link rel="stylesheet" href="main.css" type="text/css">
         <script src='//js.zapjs.com/js/download.js'></script>
     </head>
-    <body>
+    <body onload='getStatus()'>
 
         <form id="connectForm">
             <label>IP:</label>
@@ -20,12 +20,29 @@
             <button type='button'
                     id="connectButton"
                     onclick="connect()">Connect</button>
+            <button type='button'
+                    id='quitButton'
+                    onclick="leaveCircle()">Quit & shutdown</button
+                    style='display: none'>
+            <i  class="fa fa-check" 
+                id='connectOK' 
+                style="color: green; display: none" ></i>
+            <i  class="fa fa-times" 
+                id='connectFail' 
+                style="color: red; display: none"></i>
+            <i  class="fa fa-refresh fa-spin" 
+                id="connectWait" 
+                style="display: none"></i>
         </form>
         
         <h1>Grand Repository in the Sky</h1>
 
         <h2>Mobile and distributed computing systems</h2>
-        
+
+        <div>
+            <h2 id="nodeID"></h2>
+        </div>
+
         <h3>File storage : </h3>
         <fieldset>
         <form id="storeFile" enctype="multipart/form-data">
@@ -34,8 +51,15 @@
             <br/>
             <button type="submit" 
                     id="uploadButton">Upload file</button>
-            <i class="fa fa-check" id='uploadOK' style="color: green; display: none" ></i>
-            <i class="fa fa-times" id='uploadFail' style="color: red; display: none"></i>
+            <i  class="fa fa-check" 
+                id='uploadOK' 
+                style="color: green; display: none" ></i>
+            <i  class="fa fa-times" 
+                id='uploadFail' 
+                style="color: red; display: none"></i>
+            <i  class="w3-spin fa fa-refresh" 
+                id="uploadWait" 
+                style="display: none"></i>
         </form>
         </fieldset>
    
@@ -44,7 +68,7 @@
         <form id="downloadFile">
             <label>Name of the file : </label>
             <input  id="fileToDownload" 
-                    type="text" 
+                    type="search" 
                     name="fileName" 
                     onkeypress="refreshUI('download')" 
                     required>
