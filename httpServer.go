@@ -93,8 +93,8 @@ func joinHandler(w http.ResponseWriter, r *http.Request) {
 	ip := r.URL.Query().Get("ip")
 	port := r.URL.Query().Get("port")
 	fmt.Println("ip:", ip, "port:", port)
-	contact := StringToContact(ip + "-" + port + "-")
-	circleJoined = joinRing(&contact)
+	tojoin := StringToContact(ip + "-" + port + "-")
+	circleJoined = joinRing(contact, &tojoin)
 	w.Write([]byte(strconv.FormatBool(circleJoined)))
 }
 
@@ -128,4 +128,8 @@ func store(w http.ResponseWriter, r *http.Request) {
 	content, _ := ioutil.ReadFile("/tmp/" + handler.Filename)
 	storeFile(handler.Filename, content)
 	w.Write([]byte("OK"))
+}
+
+func setJoined() {
+	circleJoined = true
 }

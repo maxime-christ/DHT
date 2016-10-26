@@ -78,8 +78,19 @@ func MakeDHTNode(NodeId *string, Ip string, Port string, nwSize int) Contact {
 	pongChannel = make(chan bool)
 	healedCircleChannel = make(chan bool)
 	fileChannel = make(chan []byte)
+
 	go listen(contact)
 
+	knowContacts := getKnowContacts()
+	for c := range knowContacts { //Try to automatically connect to previously know contacts
+		if contact.NodeId != knowContacts[c].NodeId {
+			if joinRing(contact, knowContacts[c]) {
+				setJoined() //update http server accordingly
+				fmt.Println("Joined the ring using know node")
+				break
+			}
+		}
+	}
 	return *contact
 }
 
@@ -87,6 +98,7 @@ func addToRing(ring *Contact) {
 	initFingerTable(ring)
 	updateOthers()
 	balanceStorage()
+	go storeContacts()
 }
 
 func isResponsible(key string) bool {
@@ -380,6 +392,10 @@ func listen(self *Contact) {
 		case "circleHealed":
 			healedCircleChannel <- true
 
+		case "outOfCircle":
+			destContact := StringToContact(message.Dest)
+			go joinRing(contact, &destContact)
+
 		case "leave":
 			go healCircle(message.Src, true)
 		}
@@ -430,7 +446,8 @@ func ping(src, dest string) string {
 		if dest == predecessor.ContactToString() {
 			healCircle(src, false)
 		} else if between(predID, contact.NodeId, destId, false, false) {
-			//TODO send message to src to notify he may be out of the circle
+			message := createMessage("outOfCircle", contact.ContactToString(), src, "") //toCheck- TODO
+			send(message)
 		} else {
 			checkPredecessor(contact)
 			<-healedCircleChannel
@@ -694,7 +711,8 @@ func storeFile(filename string, file []byte) {
 	send(message)
 }
 
-func joinRing(dest *Contact) bool {
+func joinRing(self, dest *Contact) bool {
+	contact = self
 	pingMessage := createMessage("ping", contact.ContactToString(), dest.ContactToString(), "")
 	send(pingMessage)
 	timeoutChannel := make(chan bool)

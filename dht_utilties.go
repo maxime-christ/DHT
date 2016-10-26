@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/nu7hatch/gouuid"
 	"io/ioutil"
@@ -158,11 +159,60 @@ func exists(path string) bool {
 func getNodeID() string {
 	if exists("./config.txt") { //Read existing ID from config file
 		file, _ := ioutil.ReadFile("./config.txt")
-		fmt.Println(string(file))
 		return string(file)
 	} else { //Generate own ID and store it
 		nodeID := generateNodeId()
 		ioutil.WriteFile("config.txt", []byte(nodeID), 0644)
 		return nodeID
 	}
+}
+
+func storeContacts() { // act as an infinite loop and wake up every minute
+	for {
+		time.Sleep(1 * time.Minute)
+		var contacts map[string]*Contact
+		contacts = make(map[string]*Contact)
+		var inMap bool
+		for iterator := range finger {
+			respNode := finger[iterator].responsibleNode
+			_, inMap = contacts[respNode.NodeId]
+			if !inMap {
+				contacts[respNode.NodeId] = respNode
+			}
+		}
+		_, inMap = contacts[predecessor.NodeId]
+		if !inMap {
+			contacts[predecessor.NodeId] = predecessor
+		}
+		_, inMap = contacts[secondPredecessor.NodeId]
+		if !inMap {
+			contacts[secondPredecessor.NodeId] = secondPredecessor
+		}
+		fileOut, err := os.Create("contacts.json")
+		if err != nil {
+			fmt.Println("Error while storing contacts")
+			return
+		}
+		enc := json.NewEncoder(fileOut)
+		enc.Encode(contacts)
+		fileOut.Close()
+	}
+}
+
+func getKnowContacts() []*Contact {
+	if exists("contacts.json") {
+		fileIn, err := ioutil.ReadFile("contacts.json")
+		if err != nil {
+			fmt.Println("Error while reading contacts")
+			return nil
+		}
+		var contacts map[string]*Contact
+		json.Unmarshal(fileIn, &contacts)
+		toReturn := make([]*Contact, 0, len(contacts))
+		for key, _ := range contacts {
+			toReturn = append(toReturn, contacts[key])
+		}
+		return toReturn
+	}
+	return nil
 }
